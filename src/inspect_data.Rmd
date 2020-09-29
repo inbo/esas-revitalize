@@ -1,6 +1,494 @@
 ---
-title: "inspect_data"
+title: "First inspection ESAS questionnaire"
 author: "Lien Reyserhove"
 date: "25 augustus 2020"
 output: html_document
 ---
+
+
+## General settings
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+Load libraries
+
+```{r, warning=FALSE, message=FALSE}
+library(googlesheets4)
+library(tidyverse)
+library(janitor)
+library(magrittr)
+library(here)
+library(ggplot2)
+library(knitr)
+```
+
+```{r}
+gs4_deauth()
+```
+
+## Setup and import
+
+-  Import google sheet
+
+```{r, message=FALSE}
+input_data <- read_sheet("https://docs.google.com/spreadsheets/d/1uR4z8UYCje7CfqYDezbBlBIiSsvyyalfSPwWZEBfcIQ/edit#gid=1639204022", col_types = "c")
+```
+
+## Data cleaning
+
+Actions:
+
+- Clean columns names
+
+```{r, echo=FALSE, message=FALSE}
+input_data %<>% clean_names() 
+```
+
+- Rename headers
+
+```{r, echo=FALSE}
+input_data %<>% rename(
+  "sas_data_yn"               = "has_your_organization_monitored_seabirds_at_sea_past_or_present",
+  "name_and_acronym"          = "name_and_or_acronym_of_the_monitoring_programme_if_not_specified_please_put_none",
+  "short_description"         = "short_description_or_url_of_the_purpose",
+  "programm_lead"             = "organization_s_leading_or_commissioning_the_monitoring_programme",
+  "country"                   = "country_where_this_organization_is_based",
+  "role"                      = "what_is_your_role_in_this_monitoring_programme",
+  "active_yn"                 = "is_this_monitoring_programme_currently_active",
+  "protocol_yn"               = "data_are_collected_according_to_esas_protocol",
+  "nr_species"                = "number_of_species_occurrence_records_i_e_species_key_records",
+  "data_storage"              = "data_are_stored_as",
+  "data_import"               = "data_are_imported_into_above_system",
+  "language"                  = "language_use_in_data_e_g_english_dutch",
+  "esas_db_yn"                = "data_are_included_in_esas_database",
+  "data_sample__yn"           = "can_you_provide_a_sample_of_the_data_to_help_us_assess_data_compatibility",
+  "other_sas_data"            = "are_you_aware_of_other_seabird_at_sea_monitoring_programmes_in_your_country_please_provide_contact_information_if_possible",
+  "sharing_interest_yn"       = "is_there_any_interest_for_sharing_data_with_esas",
+  "financial_constraints_yn" = "are_there_any_financial_constraints_for_sharing_data_with_esas",
+  "legal_constraints_yn"    = "are_there_any_intellectual_ownership_constraints_for_sharing_data_with_esas",
+  "db_model_yn"               = "are_you_aware_of_the_current_esas_database_model",
+  "shortcomings_esas_model"   = "if_your_answer_to_the_previous_question_was_yes_can_you_specify_potential_shortcomings_of_the_current_esas_database_model_for_integrating_your_data",
+  "expected_costs"            = "if_your_answer_to_the_previous_question_was_yes_can_you_give_an_estimation_of_the_expected_cost_to_incorporate_the_data_in_the_esas_database",
+  "ship_based_line_transect" = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_line_transect_methodology",
+  "ship_based_strip_transect" = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_strip_transect_methodology",
+  "ship_based_flying_birds"   = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_snapshot_count_for_flying_birds",
+  "ship_based_distance"       = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_distance_estimation",
+  "aerial_digital_survey"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_digital_survey",
+  "aerial_observer_based"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_observer_based_survey",
+  "aerial_line_transect"      = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_line_transects",  
+  "aerial_strip_transect"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_strip_transects",  
+  "distance_estimation"       = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_distance_estimation",
+  "sharing_conditions"        = "if_your_answer_to_the_previous_question_was_yes_can_you_specify_what_those_constraints_are_and_or_under_what_conditions_data_could_be_shared",  
+  "information_about"         = "does_your_monitoring_programme_include_information_about")
+```
+
+## Data analysis
+
+### First/last name and institute of respondees
+
+```{r}
+input_data %>% 
+  select(first_name_last_name, organization) %>% 
+  kable()
+```
+
+The following organisations did not monitor SAS data and were thus excluded from the analysis:
+
+```{r}
+input_data %>% 
+  filter(sas_data_yn == "No") %>% 
+  select(first_name_last_name, email_address, organization) %>% 
+  kable()
+```
+
+```{r}
+#Remove from input_data
+input_data %<>% filter(sas_data_yn != "No")
+```
+
+### Country
+
+```{r, eval=FALSE}
+input_data %>% 
+  select(country) %>% 
+  group_by(country) %>% 
+  summarize(records = n())
+```
+
+Steps:
+
+- Change `Eesti` to `Estonia`:
+
+```{r}
+input_data %<>% mutate(country = recode(country, "Eesti" = "Estonia", "UK" = "United Kingdom"))
+```
+
+- Seperate `Norway and Russia`:
+
+```{r}
+input_data %<>% 
+  separate(country, 
+           into = c("country_1", "country_2"),
+           sep = " and ") %>% 
+  gather(key = "key",
+         value = "country",
+         country_1, country_2,
+         na.rm = TRUE)
+```
+
+- Clean country names: upper to lower case:
+
+```{r}
+input_data %<>% mutate(country = str_to_sentence(country))
+```
+
+
+- Generate `number_countries`
+
+```{r}
+number_countries <-
+  input_data %>% 
+    select(country) %>% 
+    group_by(country) %>% 
+    summarize(records = n())
+```
+
+- Reorder legend for graph generation
+
+```{r}
+legend_ord <- levels(with(number_countries, reorder(country, records)))
+```
+
+- Plot countries
+
+```{r}
+ggplot(number_countries, 
+       aes(x = reorder(country,records), y = records)) +
+  geom_col() +
+  xlab("Country") + ylab("Counts") +
+  geom_text(aes(label=records), vjust = 1.5, colour = "white") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  scale_fill_discrete(breaks=legend_ord) 
+```
+
+### Protocol
+
+**Question: Data are collected according to esas protocol?**
+
+```{r}
+  input_data %>% 
+    select(protocol_yn) %>% 
+    group_by(protocol_yn) %>% 
+    summarize(records = n()) %>%
+    kable()
+```
+
+### Sharing interest
+
+**Question: is there any interest for sharing data with esas?**
+
+```{r}
+sharing_yn <-
+  input_data %>% 
+    replace_na(list(sharing_interest_yn = "Unknown"))  %>% 
+    select(sharing_interest_yn) %>% 
+    group_by(sharing_interest_yn) %>% 
+    summarize(records = n())
+```
+
+```{r}
+ggplot(sharing_yn, 
+       aes(x = sharing_interest_yn, y = records)) +
+  geom_col() +
+  xlab("Sharing interest") + ylab("Counts") +
+  geom_text(aes(label=records), vjust = 1.5, colour = "white") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  scale_fill_discrete(breaks=legend_ord)
+```
+
+Projects for which sharing interest is `unknown`:
+
+```{r}
+input_data %>% 
+  filter(sharing_interest_yn == "Unknown" | is.na(sharing_interest_yn)) %>% 
+  select(name_and_acronym, first_name_last_name, organization) %>% 
+  kable()
+```
+
+
+
+### Financial constraints
+
+**Question: are there any intellectual ownership constraints for sharing data with ESAS**
+
+```{r}
+financial_constraints <-
+  input_data %>% 
+    replace_na(list(financial_constraints_yn = "Unknown"))  %>% 
+    select(financial_constraints_yn) %>% 
+    group_by(financial_constraints_yn) %>% 
+    summarize(records = n())
+```
+
+```{r}
+ggplot(financial_constraints, 
+       aes(x = financial_constraints_yn, y = records)) +
+  geom_col() +
+  xlab("Financial constraints") + ylab("Counts") +
+  geom_text(aes(label=records), vjust = 1.5, colour = "white") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+If your answer to the previous question was yes can you give an estimation of the expected cost to incorporate the data in the ESAS database:
+(No expected costs were given when `Unknown` was provided as an answer)
+
+```{r}
+input_data %>% 
+  filter(financial_constraints_yn == "Yes") %>% 
+  select(expected_costs) %>% 
+  kable()
+```
+
+### Legal constraints
+
+**Question: Are there any intellectual ownership constraints for sharing data with esas?**
+
+```{r}
+legal_constraints <-
+  input_data %>% 
+    replace_na(list(legal_constraints_yn = "Unknown"))  %>% 
+    select(legal_constraints_yn) %>% 
+    group_by(legal_constraints_yn) %>% 
+    summarize(records = n())
+```
+
+
+```{r}
+ggplot(legal_constraints, 
+       aes(x = legal_constraints_yn, y = records)) +
+  geom_col() +
+  xlab("Legal constraints") + ylab("Counts") +
+  geom_text(aes(label=records), vjust = 1.5, colour = "white") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+If your answer to the previous question was yes can you specify what those constraints are and or under what conditions data could be shared:
+(No specific conditions given for `Unknown`)
+
+```{r, eval=FALSE}
+input_data %>% 
+  filter(legal_constraints_yn == "Yes") %>% 
+  select(sharing_conditions)
+```
+
+- To be negotiated / Permission to be asked / To be analysed
+- Data from private companies (aggregated results can be published)
+- Sufficient accreditation: cite source / coauthor
+- Required delay and anonymity procedure to be followed
+
+### Data storage
+
+Question: Data are stored as:
+
+```{r, eval=FALSE}
+input_data %>% 
+    select(data_storage) %>% 
+    group_by(data_storage) %>% 
+    summarize(records = n())
+```
+
+Some cleaning steps:
+
+- Change `Relational database (Postgres, MySQL, etc.)` to `Relational database` as we will seperate on `,` later:
+**REMARK: code could be simplified, to do later**
+
+```{r}
+input_data <-
+  input_data %>% mutate(data_storage = recode(data_storage,
+    "Relational database (Postgres, MySQL, etc.)" = "Relational database",
+    "Relational database (Postgres, MySQL, etc.), CSV files" = "Relational database, CSV files",
+    "Relational database (Postgres, MySQL, etc.), Microsoft Excel" = "Relational database, Microsoft Excel"))
+```
+
+- Seperate `data_storage` into different units:
+
+```{r}
+data_storage <- 
+  input_data %>% separate(col = data_storage, 
+                            into = c("storage_1", "storage_2"),
+                            sep = ",")
+```
+
+- From wide to long dataset:
+
+```{r}
+data_storage <-
+  data_storage %>% 
+  gather(key = key, value = value, storage_1: storage_2, na.rm = TRUE, factor_key = TRUE) %>% 
+  select(key, value) %>% 
+  mutate(value = str_trim(value, side = "left")) %>%    # trim whitespace
+  mutate(value = recode(value, 
+    "But since 2015 we are collecting data using electronic devices. A Cybertracker based App was built. Data is needed to be imported to Paradox though." = "Paradox"))  %>% # Recode long sentence to `Paradox` 
+  mutate(value = factor(value, levels = c("CSV files", "Microsoft Excel", "Microsoft Access", "Paradox", "Relational database")))
+```
+
+- Recode `But since 2015 we are collecting data using electronic devices. A Cybertracker based App was built. Data is needed to be imported to Paradox though.`:
+
+- Count records:
+
+```{r}
+data_storage <-
+  data_storage %>% 
+    select(value) %>% 
+    group_by(value) %>% 
+    summarize(records = n())
+```
+
+- Reorder legend:
+
+```{r}
+legend_ord <- levels(data_storage$value)
+```
+
+```{r}
+ggplot(data_storage, aes(x = value, y = records)) +
+  geom_col() +
+  xlab("Data storage") + ylab("Counts") +
+  geom_text(aes(label=records), vjust = 1.5, colour = "white") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+### Data import
+
+**Question: Data are imported into above system:**
+
+```{r}
+data_importation <-
+  input_data %>% 
+    select(data_import) %>%
+    group_by(data_import) %>%
+    summarize(records = n())
+```
+
+Some cleaning steps:
+
+- Recode to make graph more readable
+
+```{r}
+data_importation <- 
+  data_importation %>% 
+    mutate(data_import = recode(data_import,
+      "Periodically, but at least within 12 months" = "< 12 months",
+      "Periodically, but at least within 3 months" = "< 3 months")) 
+```
+
+```{r}
+data_importation %<>% 
+  mutate(data_import = factor(data_import, levels = c("After each trip", "< 3 months", "< 12 months")))
+```
+
+- Reorder legend
+
+```{r}
+legend_ord <- levels(data_importation$data_import)
+```
+
+
+```{r}
+ggplot(data_importation, aes(x = data_import, y = records)) +
+  geom_col() +
+  xlab("Data import") + ylab("Count") +
+  geom_text(aes(label=records), vjust = 1.5, colour = "white") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+### Language
+
+```{r,eval=FALSE}
+input_data %>% 
+  select(language) %>% 
+  group_by(language) %>% 
+  summarize(records = n())
+```
+
+Some cleaning steps:
+
+- For those datasets with two language for which one language is English --> select English only
+
+```{r}
+languages <- 
+  input_data %>% 
+    mutate(language = recode(language,
+      "english" = "English",
+      "English / Dutch" = "English, *",
+      "English, German" = "English, *",
+      "English/German" = "English, *",
+      "Latvian (remaks field only. the rest of fields are coded)" = "Latvian (Remarks only)",
+      "Polish/English/Latin" = "English, *",
+      "Russian, English" = "English, *"
+    ))
+```
+
+```{r}
+languages %<>% 
+  select(language) %>% 
+  group_by(language) %>% 
+  summarize(records = n())
+```
+
+```{r}
+ggplot(languages, aes(x = language, y = records)) +
+  geom_col() +
+  xlab("Languages") + ylab("Counts") +
+  geom_text(aes(label=records), vjust = 1.5, colour = "white") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+### ESAS database model
+
+**Question: Are you aware of the current esas database model?**
+
+```{r}
+db_awareness <- 
+  input_data %>% 
+    select(db_model_yn) %>% 
+    group_by(db_model_yn) %>% 
+    summarize(records = n())
+```
+
+```{r}
+ggplot(db_awareness, aes(x = db_model_yn, y = records)) +
+  geom_col() +
+  xlab("Aware of ESAS DB model?") + ylab("Counts") +
+  geom_text(aes(label=records), vjust = 1.5, colour = "white") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+### Data sample
+
+Question: Can you provide a sample of the data to help us assess data compatibility
+
+```{r}
+input_data %>% 
+  select(data_sample__yn) %>% 
+  group_by(data_sample__yn) %>% 
+  summarize(records = n()) %>% 
+  kable()
+```
+
+
+
+
+
+
+
