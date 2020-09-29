@@ -84,6 +84,14 @@ input_data %<>% rename(
   "information_about"         = "does_your_monitoring_programme_include_information_about")
 ```
 
+
+Save cleaned dataset to GitHub:
+
+```{r}
+write.csv(input_data, here::here("data", "raw", "input_data.csv"), row.names = FALSE)
+```
+
+
 ## Data analysis
 
 ### First/last name and institute of respondees
