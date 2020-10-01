@@ -1,0 +1,185 @@
+---
+title: "Analyze ESAS questionnaire for draft report"
+author: "Lien Reyserhove"
+date: "25 augustus 2020"
+output: html_document
+---
+
+
+# General settings
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+Load libraries
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(magrittr)
+library(here)
+library(knitr)
+library(formattable)
+```
+
+# Import data
+
+```{r import data}
+input_data <- read.delim(file = here::here("data", "input", "input_data.csv"), sep = ",")
+```
+
+Import spatial information:
+
+```{r}
+global_countries_spatial <- st_read(here::here("./data/input/CNTR_RG_60M_2020_4326.geojson"))
+```
+
+
+# Clean data
+
+Country data is essential in this analysis. Here we clean this information
+
+```{r, eval=FALSE}
+input_data %>% 
+  select(country) %>% 
+  group_by(country) %>% 
+  summarize(records = n())
+```
+
+Steps:
+
+- Seperate `Norway and Russia`:
+
+```{r}
+input_data %<>% 
+  separate(country, 
+           into = c("country_1", "country_2"),
+           sep = " and ") %>% 
+  gather(key = "key",
+         value = "country",
+         country_1, country_2,
+         na.rm = TRUE)
+```
+
+- Recode names to match with `global_countries_spatial`:
+
+```{r}
+input_data %<>% mutate(country = recode(country, 
+  "Eesti" = "Estonia", 
+  "Russia" = "Russian Federation",
+  "UK" = "United Kingdom"))
+```
+
+- Clean country names: upper to lower case:
+
+```{r}
+input_data %<>% mutate(country = str_to_title(country))
+```
+
+Add ISO codes in `global_countries_spatial` to `input_data`
+
+```{r}
+input_data %<>% left_join(
+  select(global_countries_spatial, NAME_ENGL, ISO3_CODE),
+  by = c("country" = "NAME_ENGL")) 
+```
+
+
+# Graphs
+
+## WHO has responded?
+
+### Graph 1: Overview of total amount of datasets per country
+
+Select on countries of interest:
+
+```{r}
+countries_spatial <-
+  global_countries_spatial %>%
+  filter(ISO3_CODE %in% input_data$ISO3_CODE)
+```
+
+Generate `datasets_per_country`
+
+```{r}
+datasets_per_country <- 
+  input_data %>% 
+    select(ISO3_CODE) %>% 
+    group_by(ISO3_CODE) %>% 
+    summarize(n_datasets = n())
+```
+
+
+Join information with `countries_spatial`
+
+```{r}
+countries_spatial %<>% 
+  left_join(datasets_per_country,
+            by = "ISO3_CODE")
+```
+
+Plot information:
+
+```{r}
+bins <- c(1, 2, 3, 4)
+pal <- colorNumeric("YlOrRd", domain = countries_spatial$n_datasets)
+
+map_datasets <-
+  leaflet(countries_spatial) %>%
+  setView(lng = 4.89,
+          lat = 51.01,
+          zoom = 4) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(n_datasets),
+    weight = 2,
+    opacity = 1,
+    color = "grey",
+    dashArray = "3",
+    fillOpacity = 1,
+    highlight = highlightOptions(
+      weight = 5,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+    label = ~htmlEscape(n_datasets)) %>%
+  addLegend("bottomright",
+            pal = pal, values = ~n_datasets,
+            title = "Published datasets",
+            opacity = 1)
+map_datasets
+
+```
+
+VOEG HIER NOG EEN LAAT TO MET DATASETS WAARVOOR WE GEEN ANTWOORDEN KREGEN
+
+
+### Table 1: Organizations + acronym
+
+
+Generate table with organizations + acronyms
+
+```{r}
+organizations_acronyms <- 
+  input_data %>% 
+    mutate(country = recode(country, "United Kingdom" = "UK", "Russian Federation" = "Russia")) %>% 
+    arrange(country) %>% 
+    select(country, organization, name_and_acronym) %>% 
+    kbl() %>% 
+    kable_classic(full_width = T, html_font = "Arial") %>% 
+    kable_styling(bootstrap_options = c("striped", "hover"))
+organizations_acronyms
+```
+
+
+
+
+
+# to save png from html
+# play with zoom level while making map_datasets to get the right png
+# Notice that in the png you don't have the interaction with the pop-up labels
+webshot("output_map_datasets_demo.html",
+        file = "output_map_datasets_demo.png",
+        cliprect = "viewport")
+
