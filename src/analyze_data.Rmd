@@ -20,6 +20,10 @@ library(magrittr)
 library(here)
 library(knitr)
 library(formattable)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(kableExtra)
 ```
 
 # Import data
@@ -163,23 +167,161 @@ Generate table with organizations + acronyms
 ```{r}
 organizations_acronyms <- 
   input_data %>% 
-    mutate(country = recode(country, "United Kingdom" = "UK", "Russian Federation" = "Russia")) %>% 
-    arrange(country) %>% 
-    select(country, organization, name_and_acronym) %>% 
-    kbl() %>% 
-    kable_classic(full_width = T, html_font = "Arial") %>% 
-    kable_styling(bootstrap_options = c("striped", "hover"))
-organizations_acronyms
+      mutate(country = recode(country, "United Kingdom" = "UK", "Russian Federation" = "Russia")) %>% 
+      arrange(country) %>% 
+      select(country, organization, name_and_acronym) %>% 
+      kbl() %>% 
+      kable_classic(full_width = T, html_font = "Arial") %>% 
+      kable_styling(bootstrap_options = c("striped", "hover")) 
+```
+
+```{r}
+organizations_acronyms %>% as_image(file = "../test.png")
+```
+
+This analysis will only focus on SAS data
+--> remove non-SAS responses:
+
+```{r remove non sas data}
+input_data %<>% filter(sas_data_yn != "No")
+```
+
+## Data compatibiltiy
+
+TABLE: general overview compatibility: 
+- Data included / not included
+- Size 
+- Languages
+- Finished / Ongoing
+- Update frequency
+
+### Data import
+
+First, clean `data_import`:
+
+1. Inspect `data_import`
+
+```{r}
+input_data %>% 
+    select(data_import) %>%
+    group_by(data_import) %>%
+    summarize(records = n())
+```
+
+2. Clean:
+
+```{r}
+input_data <- 
+  input_data %>% 
+    mutate(data_import = recode(data_import,
+      "After each trip" = "Direct",
+      "In my own database on the same day as the data are collected" = "Direct",
+      "Periodically, but at least within 12 months" = "< 12 months",
+      "Periodically, but at least within 3 months" = "< 3 months")) 
+```
+
+### Languages
+
+```{r}
+input_data %>% select(language) %>% group_by(language) %>% summarize(records = n())
+```
+
+
+Create two columns: one "English" (yes/no) and one "Other" (specification of the language)
+
+1. Create column ´english_yn´
+
+```{r}
+input_data %<>% mutate("english_yn" = case_when(
+  language == "English / Dutch" |
+  language == "english" |
+  language == "English"  | 
+  language == "English, German" | 
+  language == "English/German" | 
+  language == "Polish/English/Latin" | 
+  language == "Russian, English" ~ "yes",
+  is.na(language) ~ "unknown"
+  ,
+  TRUE ~ "no"))
+```
+
+2. Inspect data
+
+```{r}
+input_data %>% select(language, english_yn) %>% group_by_all() %>% summarize(records = n())
+```
+
+3. Create column ´language_other´
+
+```{r}
+input_data %<>% mutate("language_other" = case_when(
+  language == "English / Dutch" ~ "Dutch",
+  language == "English, German" | language == "English/German"  ~ "German",
+  language == "Polish/English/Latin" ~ "Polish | Latin",
+  language == "Russian, English" ~ "Russian",
+  language == "French" ~ "French",
+  language == "Latvian (remaks field only. the rest of fields are coded)" ~ "Latvian",
+  language == "Polish" ~ "Polish" ,
+  language == "Swedish" ~ "Swedish",
+  is.na(language) ~ "unknown",
+  TRUE ~ ""))
+```
+
+4. Inspect data
+
+```{r}
+input_data %>% 
+  select(language, english_yn, language_other) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+### Finished / Ongoing
+
+
+### Summary
+
+```{r}
+input_data %>% 
+    select(country, esas_db_yn, nr_species, english_yn, language_other, active_yn, data_import) %>% 
+  arrange(country) %>% 
+  formattable() %>% 
+  as_image("test.png")
+```
+
+##
+
+
+GRAPH: Data included or not included in ESAS db
+
+```{r}
+esas_yn <- 
+  input_data %>% 
+    select(esas_db_yn) %>% 
+    group_by_all() %>% 
+    summarize(records = n())
+```
+
+Barplot data ([why not Pie chart](https://www.data-to-viz.com/caveat/pie.html))
+
+```{r}
+png(filename = here::here("data","figures","esas_database_yn.png"))
+esas_database_yn <- 
+  ggplot(esas_yn, aes(x = fct_relevel(esas_db_yn, "No", "Partially", "Yes", "Planned", "Unknown")
+                      , y = records)) +
+    geom_bar(colour="black",fill="#FF9933",width=0.8, stat="identity") + 
+    xlab("") + ylab("Number of datasets") +
+    geom_text(aes(label=records), vjust = 1.5, colour = "black") +
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          axis.text.x = element_text(size = 20, hjust=1),
+          axis.text.y = element_text(size = 20),
+          axis.title.y = element_text(size = 20)) +
+    theme(axis.text.x = element_text(angle = 45))
+print(esas_database_yn)
 ```
 
 
 
 
-
-# to save png from html
-# play with zoom level while making map_datasets to get the right png
-# Notice that in the png you don't have the interaction with the pop-up labels
-webshot("output_map_datasets_demo.html",
-        file = "output_map_datasets_demo.png",
-        cliprect = "viewport")
 
