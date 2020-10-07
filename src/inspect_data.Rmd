@@ -58,7 +58,7 @@ input_data %<>% rename(
   "role"                      = "what_is_your_role_in_this_monitoring_programme",
   "active_yn"                 = "is_this_monitoring_programme_currently_active",
   "protocol_yn"               = "data_are_collected_according_to_esas_protocol",
-  "nr_species"                = "number_of_species_occurrence_records_i_e_species_key_records",
+  "nr_occurrences"                = "number_of_species_occurrence_records_i_e_species_key_records",
   "data_storage"              = "data_are_stored_as",
   "data_import"               = "data_are_imported_into_above_system",
   "language"                  = "language_use_in_data_e_g_english_dutch",
@@ -88,9 +88,8 @@ input_data %<>% rename(
 Save cleaned dataset to GitHub:
 
 ```{r}
-write.csv(input_data, here::here("data", "raw", "input_data.csv"), row.names = FALSE)
+write.csv(input_data, here::here("data", "input", "input_data.csv"), row.names = FALSE)
 ```
-
 
 ## Data analysis
 
@@ -214,8 +213,7 @@ ggplot(sharing_yn,
   xlab("Sharing interest") + ylab("Counts") +
   geom_text(aes(label=records), vjust = 1.5, colour = "white") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 90)) +
-  scale_fill_discrete(breaks=legend_ord)
+  theme(axis.text.x = element_text(angle = 90)) 
 ```
 
 Projects for which sharing interest is `unknown`:
