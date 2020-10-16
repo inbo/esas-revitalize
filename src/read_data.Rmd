@@ -1,0 +1,98 @@
+---
+title: "First inspection ESAS questionnaire"
+author: "Lien Reyserhove"
+date: "25 augustus 2020"
+output: html_document
+---
+
+
+## General settings
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+Load libraries
+
+```{r, warning=FALSE, message=FALSE}
+library(googlesheets4)
+library(tidyverse)
+library(janitor)
+library(magrittr)
+library(here)
+library(ggplot2)
+library(knitr)
+```
+
+```{r}
+gs4_deauth()
+```
+
+## Setup and import
+
+-  Import google sheet
+
+```{r, message=FALSE}
+input_data <- read_sheet("https://docs.google.com/spreadsheets/d/1uR4z8UYCje7CfqYDezbBlBIiSsvyyalfSPwWZEBfcIQ/edit#gid=1639204022", col_types = "c")
+```
+
+## Data cleaning
+
+Actions:
+
+- Clean columns names
+
+```{r, echo=FALSE, message=FALSE}
+input_data %<>% clean_names() 
+```
+
+- Rename headers
+
+```{r, echo=FALSE}
+input_data %<>% rename(
+  "sas_data_yn"               = "has_your_organization_monitored_seabirds_at_sea_past_or_present",
+  "name_and_acronym"          = "name_and_or_acronym_of_the_monitoring_programme_if_not_specified_please_put_none",
+  "short_description"         = "short_description_or_url_of_the_purpose",
+  "programm_lead"             = "organization_s_leading_or_commissioning_the_monitoring_programme",
+  "country"                   = "country_where_this_organization_is_based",
+  "role"                      = "what_is_your_role_in_this_monitoring_programme",
+  "active_yn"                 = "is_this_monitoring_programme_currently_active",
+  "protocol_yn"               = "data_are_collected_according_to_esas_protocol",
+  "nr_occurrences"                = "number_of_species_occurrence_records_i_e_species_key_records",
+  "data_storage"              = "data_are_stored_as",
+  "data_import"               = "data_are_imported_into_above_system",
+  "language"                  = "language_use_in_data_e_g_english_dutch",
+  "esas_db_yn"                = "data_are_included_in_esas_database",
+  "data_sample__yn"           = "can_you_provide_a_sample_of_the_data_to_help_us_assess_data_compatibility",
+  "other_sas_data"            = "are_you_aware_of_other_seabird_at_sea_monitoring_programmes_in_your_country_please_provide_contact_information_if_possible",
+  "sharing_interest_yn"       = "is_there_any_interest_for_sharing_data_with_esas",
+  "financial_constraints_yn" = "are_there_any_financial_constraints_for_sharing_data_with_esas",
+  "legal_constraints_yn"    = "are_there_any_intellectual_ownership_constraints_for_sharing_data_with_esas",
+  "db_model_yn"               = "are_you_aware_of_the_current_esas_database_model",
+  "shortcomings_esas_model"   = "if_your_answer_to_the_previous_question_was_yes_can_you_specify_potential_shortcomings_of_the_current_esas_database_model_for_integrating_your_data",
+  "expected_costs"            = "if_your_answer_to_the_previous_question_was_yes_can_you_give_an_estimation_of_the_expected_cost_to_incorporate_the_data_in_the_esas_database",
+  "ship_based_line_transect" = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_line_transect_methodology",
+  "ship_based_strip_transect" = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_strip_transect_methodology",
+  "ship_based_flying_birds"   = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_snapshot_count_for_flying_birds",
+  "ship_based_distance"       = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_distance_estimation",
+  "aerial_digital_survey"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_digital_survey",
+  "aerial_observer_based"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_observer_based_survey",
+  "aerial_line_transect"      = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_line_transects",  
+  "aerial_strip_transect"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_strip_transects",  
+  "distance_estimation"       = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_distance_estimation",
+  "sharing_conditions"        = "if_your_answer_to_the_previous_question_was_yes_can_you_specify_what_those_constraints_are_and_or_under_what_conditions_data_could_be_shared",  
+  "information_about"         = "does_your_monitoring_programme_include_information_about")
+```
+
+
+Save cleaned dataset to GitHub:
+
+```{r}
+write.csv(input_data, here::here("data", "input", "input_data.csv"), row.names = FALSE)
+```
+
+
+
+
+
+
