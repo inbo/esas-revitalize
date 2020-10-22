@@ -1,0 +1,450 @@
+# Paragraph 1: General project information
+
+## Figure 1: Number of datasets per country
+
+Select on countries of interest:
+
+```{r}
+countries_spatial <-
+  global_countries_spatial %>%
+  filter(ISO3_CODE %in% input_data$ISO3_CODE)
+```
+
+Generate `datasets_per_country`
+
+```{r}
+datasets_per_country <- 
+  input_data %>% 
+    select(ISO3_CODE) %>% 
+    group_by(ISO3_CODE) %>% 
+    summarize(n_datasets = n())
+```
+
+Join information with `countries_spatial`
+
+```{r}
+countries_spatial %<>% 
+  left_join(datasets_per_country,
+            by = "ISO3_CODE")
+```
+
+Plot information:
+
+```{r}
+bins <- c(1, 2, 3, 4)
+pal <- colorNumeric("YlOrRd", domain = countries_spatial$n_datasets)
+
+figure_1 <-
+  leaflet(countries_spatial) %>%
+  setView(lng = 9,
+          lat = 51,
+          zoom = 3.75) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(n_datasets),
+    weight = 2,
+    opacity = 1,
+    color = "grey",
+    dashArray = "3",
+    fillOpacity = 1,
+    highlight = highlightOptions(
+      weight = 5,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+    label = ~htmlEscape(n_datasets)) %>%
+  addLegend("bottomright",
+            pal = pal, values = ~n_datasets,
+            title = "number of SAS datasets",
+            opacity = 1)
+figure_1
+```
+
+Save html via Export -> Save as web page or via saveWidget:
+
+```{r}
+saveWidget(figure_1,
+           "figure_1.html",
+           selfcontained = TRUE)
+```
+
+```{r}
+webshot("figure_1.html",
+        file = "../data/processed/figure_1.png",
+        cliprect = "viewport")
+```
+
+
+VOEG HIER NOG EEN LAAG TO MET DATASETS WAARVOOR WE GEEN ANTWOORDEN KREGEN
+
+## Text
+
+Summarize `esas_db_yn`:
+
+```{r}
+input_data %>% 
+  select(esas_db_yn) %>% 
+  group_by_all() %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
+Summarize `active_yn`:
+
+```{r}
+input_data %>% 
+  select(active_yn) %>% 
+  group_by_all() %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
+## Table 1: General project information
+
+This table discusses the following dataset properties:
+
+- Dataset ID
+- Country
+- Organization (acronym)
+- Programme name and/or acronym
+- active (yes/no)
+- esas database (yes/no)
+
+
+```{r}
+table_1 <- 
+  input_data %>%
+      select(dataset_id, country, organization_acronym, name_acronym_clean, esas_db_yn, active_yn) %>% 
+  rename(`Dataset ID` = dataset_id) %>%
+  rename(`Country` = country,
+         `Organization (acronym)` = organization_acronym,
+         `Programme name and/or acronym` = name_acronym_clean,
+         `ESAS database (y/n)` = esas_db_yn,
+         `Active (y/n)` = active_yn) %>% 
+      arrange(`Country`) %>% 
+      kbl() %>% 
+      kable_classic(full_width = T, html_font = "Arial") %>% 
+      kable_styling(bootstrap_options = c("striped", "hover")) 
+table_1
+```
+
+```{r}
+ as_image(table_1, file = "../data/processed/table_1.png")
+```
+
+# Paragraph 2: Data content
+
+This table should include:
+
+- Nr of occurrences 
+- Geographical Coverage
+- Taxonomic Coverage
+- Platform
+- Age Composition
+
+## Number of occurrences
+
+Inspect `nr_occurrences`:
+
+
+## Taxonomic scope
+
+inspect values:
+
+```{r}
+input_data %>% 
+  select(taxonomic_scope) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+Seperate into `birds_yn`, `marine_mammals_yn`, `other`:
+
+```{r}
+input_data %<>%
+  separate(taxonomic_scope,
+             into = c("birds_yn", "marine_mammals_yn", "other"),
+             sep = ", ")
+```
+
+Clean data:
+- recode to yes/no for birds and marine mammals or empty if NA
+- Clean `other` field
+
+```{r}
+input_data %<>% 
+  mutate(other = case_when(
+    birds_yn == "Multispecies" ~ "Multispecies", # add multispecies information to `other`
+    TRUE ~ other)) %>% 
+  mutate(birds_yn = "yes") %>%  # all datasets have birds
+  mutate(marine_mammals_yn = case_when(
+    marine_mammals_yn == "Marine mammals" ~ "yes", TRUE ~ "no")) %>% 
+  mutate(other = recode(other,
+    "fish and turtles" = "Fish, turtles",
+    "oceanography" = "Oceanography",
+    "reptiles" = "Reptiles",
+    "turtle" = "Turtles",
+    .missing = "")) 
+```
+
+Summarize amount of programmes that include birds:
+
+```{r}
+input_data %>% 
+  select(marine_mammals_yn) %>% 
+  group_by(marine_mammals_yn) %>% 
+  summarize(records = n())
+```
+
+## start year
+
+```{r}
+input_data %>% 
+  select(start_year) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+## sampling interval
+
+
+```{r}
+input_data %>% 
+  select(sampling_interval) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+## Language
+
+```{r,eval=FALSE}
+input_data %>% 
+  select(language) %>% 
+  group_by(language) %>% 
+  summarize(records = n())
+```
+
+Some cleaning steps:
+
+- For those datasets with two language for which one language is English --> select English only
+
+```{r}
+languages <- 
+  input_data %>% 
+    mutate(language = recode(language,
+      "english" = "English",
+      "English / Dutch" = "English, *",
+      "English, German" = "English, *",
+      "English/German" = "English, *",
+      "Latvian (remaks field only. the rest of fields are coded)" = "Latvian (Remarks only)",
+      "Polish/English/Latin" = "English, *",
+      "Russian, English" = "English, *"
+    ))
+```
+
+```{r}
+languages %<>% 
+  select(language) %>% 
+  group_by(language) %>% 
+  summarize(records = n())
+languages
+```
+
+## Platform and method
+
+Inspect data:
+
+```{r}
+input_data %>% 
+  select(platform) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+## Other information
+
+Should be cleand
+
+## Table 2: Data content
+
+
+```{r}
+table_2 <- 
+  input_data %>% 
+      select(dataset_id, nr_occurrences_clean, geographical_scope_clean, marine_mammals_yn,  other, platform, information_about) %>% 
+  arrange(dataset_id)
+
+kbl(table_2)
+```
+
+Generate table:
+
+```{r}
+table_2 %>% 
+  kbl() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))%>% 
+  as_image(file = "../data/figures/table_2.png")
+```
+
+
+
+
+
+# Paragraph 3: Constraints for sharing data
+
+- Sharing interest
+- Financial constraints
+- Legal constraints
+
+### Sharing interest
+
+Screent content of `sharing_interest_yn`:
+
+```{r}
+input_data %>%
+  select(sharing_interest_yn) %>% 
+  group_by(sharing_interest_yn) %>% 
+  summarize(records = n())
+```
+
+No cleaning required
+
+### Financial constraints
+
+Screent content of `financial_constraints_yn`:
+
+```{r}
+input_data %>%
+  select(financial_constraints_yn) %>% 
+  group_by(financial_constraints_yn) %>% 
+  summarize(records = n())
+```
+
+No cleaning required
+
+### Legal constraints
+
+legal_constraints_yn
+
+```{r}
+input_data %>%
+  select(legal_constraints_yn) %>% 
+  group_by(legal_constraints_yn) %>% 
+  summarize(records = n())
+```
+
+Reasons for not sharing data:
+
+
+### Summary
+
+```{r}
+table_3 <- 
+  input_data %>% 
+    select(dataset_id, sharing_interest_yn, financial_constraints_yn, legal_constraints_yn) %>%
+    rename(`Dataset ID` = dataset_id,
+           `Sharing interest (y/n)` = sharing_interest_yn,
+           `financial`)
+    arrange(`Dataset ID`) 
+```
+
+```{r}
+formattable(table_3,
+            align = c("l","c","c","c"),
+            list(
+              sharing_interest_yn = yn_formatter,
+              financial_constraints_yn = yn_formatter))
+```
+
+Define formatters:
+
+```{r}
+yn_formatter <-
+  formatter("span",
+            style = 
+              x ~ style(color = ifelse(x == "Yes", "green", 
+                                       ifelse(x == "No", "red", "grey"))),
+              x ~ icontext(ifelse( x == "Yes", "ok", 
+                                   ifelse(x == "No", "remove", "minus")),
+                           ifelse(x == "Yes", "Yes",
+                                  ifelse(x == "No", "No", ""))),
+            "font_size" = 40)
+```
+
+
+
+```{r}
+formattable(
+  data_compatibilty,
+  list(
+    `esas_db_yn` = active_yn_formatter))
+```
+
+
+# Discussion per country
+
+Define function to retrieve information in discussion section
+
+```{r}
+summary_per_datasetid <-
+  function(id){
+    input_data %>% filter(dataset_id == id) %>% 
+      mutate(start_year = factor(start_year)) %>% 
+      select(dataset_id,
+        country,
+        organization_acronym,
+        name_acronym_clean,
+        role,
+        programm_lead,
+        short_description,
+        active_yn,
+        start_year,
+        end_year,
+        taxonomic_scope,
+        geographical_scope_clean,
+        nr_occurrences_clean,
+        platform,
+        data_storage,
+        language,
+        esas_db_yn,
+        remarks,
+        sharing_interest_yn,
+        financial_constraints_yn,
+        expected_costs,
+        legal_constraints_yn,
+        sharing_conditions,
+        other_relevant_remarks,
+        other_sas_data) %>% 
+      rownames_to_column() %>% 
+      pivot_longer(-rowname, names_to = "column") %>% 
+      select(-rowname) %>% 
+      kbl() %>% 
+      kable_styling(bootstrap_options = c("striped", "hover"))
+      }
+```
+
+Function to retrieve organization codes per country:
+
+```{r}
+datasetid_per_country <- 
+  function(country_name){
+    input_data %>% 
+      filter(country == country_name) %>% 
+      select(dataset_id)
+    }
+```
+
+Retrieve dataset id's for a specific country:
+
+```{r}
+datasetid_per_country("Poland")
+```
+
+Summarize information for a specific `dataset_id`:
+
+```{r}
+summary_per_datasetid("POL-GIOS")
+```
+
+
