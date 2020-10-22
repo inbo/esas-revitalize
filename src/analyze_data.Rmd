@@ -1,10 +1,8 @@
 ---
 title: "Analyze ESAS questionnaire for draft report"
 author: "Lien Reyserhove"
-date: "25 augustus 2020"
 output: html_document
 ---
-
 
 # General settings
 
@@ -24,115 +22,65 @@ library(sf)
 library(leaflet)
 library(htmltools)
 library(kableExtra)
+library(htmlwidgets)
+library(webshot)
 ```
 
 # Import data
 
 ```{r import data}
-input_data <- read.delim(file = here::here("data", "input", "input_data.csv"), sep = ",")
+input_data <- read.delim(file = here::here("data", "intermediate", "input_data_cleaned.csv"), sep = ",")
 ```
 
-Import spatial information:
+Import spatial information dataset for map:
 
-```{r}
+```{r import geojson}
 global_countries_spatial <- st_read(here::here("./data/input/CNTR_RG_60M_2020_4326.geojson"))
 ```
 
+# Paragraph 1: General project information
 
-# Clean data
-
-Country data is essential in this analysis. Here we clean this information
-
-```{r, eval=FALSE}
-input_data %>% 
-  select(country) %>% 
-  group_by(country) %>% 
-  summarize(records = n())
-```
-
-Steps:
-
-- Seperate `Norway and Russia`:
-
-```{r}
-input_data %<>% 
-  separate(country, 
-           into = c("country_1", "country_2"),
-           sep = " and ") %>% 
-  gather(key = "key",
-         value = "country",
-         country_1, country_2,
-         na.rm = TRUE)
-```
-
-- Recode names to match with `global_countries_spatial`:
-
-```{r}
-input_data %<>% mutate(country = recode(country, 
-  "Eesti" = "Estonia", 
-  "Russia" = "Russian Federation",
-  "UK" = "United Kingdom"))
-```
-
-- Clean country names: upper to lower case:
-
-```{r}
-input_data %<>% mutate(country = str_to_title(country))
-```
-
-Add ISO codes in `global_countries_spatial` to `input_data`
-
-```{r}
-input_data %<>% left_join(
-  select(global_countries_spatial, NAME_ENGL, ISO3_CODE),
-  by = c("country" = "NAME_ENGL")) 
-```
-
-
-# Graphs
-
-## WHO has responded?
-
-### Graph 1: Overview of total amount of datasets per country
-
-Select on countries of interest:
-
-```{r}
-countries_spatial <-
-  global_countries_spatial %>%
-  filter(ISO3_CODE %in% input_data$ISO3_CODE)
-```
+## Figure 1: Number of datasets per country
 
 Generate `datasets_per_country`
 
 ```{r}
 datasets_per_country <- 
   input_data %>% 
-    select(ISO3_CODE) %>% 
-    group_by(ISO3_CODE) %>% 
+    select(country_clean) %>% 
+    group_by(country_clean) %>% 
     summarize(n_datasets = n())
+datasets_per_country
+```
+
+filter spatial information on countries of interest
+
+```{r}
+focal_countries_spatial <- 
+  global_countries_spatial %>% 
+    filter(NAME_ENGL %in% input_data$country_clean)
 ```
 
 
 Join information with `countries_spatial`
 
 ```{r}
-countries_spatial %<>% 
+focal_countries_spatial %<>% 
   left_join(datasets_per_country,
-            by = "ISO3_CODE")
+            by = c("NAME_ENGL" = "country_clean"))
 ```
 
 Plot information:
 
 ```{r}
 bins <- c(1, 2, 3, 4)
-pal <- colorNumeric("YlOrRd", domain = countries_spatial$n_datasets)
+pal <- colorNumeric("YlOrRd", domain = focal_countries_spatial$n_datasets)
 
-map_datasets <-
-  leaflet(countries_spatial) %>%
-  setView(lng = 4.89,
-          lat = 51.01,
-          zoom = 4) %>%
+figure_1 <-
+  leaflet(focal_countries_spatial) %>%
+  setView(lng = 9,
+          lat = 51,
+          zoom = 3.75) %>%
   addTiles() %>%
   addPolygons(
     fillColor = ~pal(n_datasets),
@@ -150,178 +98,192 @@ map_datasets <-
     label = ~htmlEscape(n_datasets)) %>%
   addLegend("bottomright",
             pal = pal, values = ~n_datasets,
-            title = "Published datasets",
+            title = "number of SAS datasets",
             opacity = 1)
-map_datasets
-
+figure_1
 ```
 
-VOEG HIER NOG EEN LAAT TO MET DATASETS WAARVOOR WE GEEN ANTWOORDEN KREGEN
-
-
-### Table 1: Organizations + acronym
-
-
-Generate table with organizations + acronyms
+Save html via Export -> Save as web page or via saveWidget:
 
 ```{r}
-organizations_acronyms <- 
-  input_data %>% 
-      mutate(country = recode(country, "United Kingdom" = "UK", "Russian Federation" = "Russia")) %>% 
-      arrange(country) %>% 
-      select(country, organization, name_and_acronym) %>% 
+saveWidget(figure_1,
+           "figure_1.html",
+           selfcontained = TRUE)
+```
+
+```{r}
+webshot("figure_1.html",
+        file = "../data/processed/figure_1.png",
+        cliprect = "viewport")
+```
+
+## Table 1: General project information
+
+This table discusses the following dataset properties:
+
+- Dataset ID
+- Country
+- Organization (acronym)
+- Programme name and/or acronym
+- active (yes/no)
+- esas database (yes/no)
+
+```{r}
+table_1 <- 
+  input_data %>%
+      select(dataset_id, country_clean, organization_acronym, name_acronym_clean, esas_db_yn, active_yn) %>% 
+  rename(`Dataset ID` = dataset_id) %>%
+  rename(`Country` = country_clean,
+         `Organization (acronym)` = organization_acronym,
+         `Programme name and/or acronym` = name_acronym_clean,
+         `ESAS database (y/n)` = esas_db_yn,
+         `Active (y/n)` = active_yn) %>% 
+      arrange(`Country`) %>% 
       kbl() %>% 
       kable_classic(full_width = T, html_font = "Arial") %>% 
       kable_styling(bootstrap_options = c("striped", "hover")) 
+table_1
 ```
 
 ```{r}
-organizations_acronyms %>% as_image(file = "../test.png")
+ as_image(table_1, file = "../data/processed/table_1.png")
 ```
 
-This analysis will only focus on SAS data
---> remove non-SAS responses:
+## Text
 
-```{r remove non sas data}
-input_data %<>% filter(sas_data_yn != "No")
-```
+### Integration in ESAs database?
 
-## Data compatibiltiy
-
-TABLE: general overview compatibility: 
-- Data included / not included
-- Size 
-- Languages
-- Finished / Ongoing
-- Update frequency
-
-### Data import
-
-First, clean `data_import`:
-
-1. Inspect `data_import`
+Summarize `esas_db_yn`:
 
 ```{r}
 input_data %>% 
-    select(data_import) %>%
-    group_by(data_import) %>%
-    summarize(records = n())
-```
-
-2. Clean:
-
-```{r}
-input_data <- 
-  input_data %>% 
-    mutate(data_import = recode(data_import,
-      "After each trip" = "Direct",
-      "In my own database on the same day as the data are collected" = "Direct",
-      "Periodically, but at least within 12 months" = "< 12 months",
-      "Periodically, but at least within 3 months" = "< 3 months")) 
-```
-
-### Languages
-
-```{r}
-input_data %>% select(language) %>% group_by(language) %>% summarize(records = n())
-```
-
-
-Create two columns: one "English" (yes/no) and one "Other" (specification of the language)
-
-1. Create column ´english_yn´
-
-```{r}
-input_data %<>% mutate("english_yn" = case_when(
-  language == "English / Dutch" |
-  language == "english" |
-  language == "English"  | 
-  language == "English, German" | 
-  language == "English/German" | 
-  language == "Polish/English/Latin" | 
-  language == "Russian, English" ~ "yes",
-  is.na(language) ~ "unknown"
-  ,
-  TRUE ~ "no"))
-```
-
-2. Inspect data
-
-```{r}
-input_data %>% select(language, english_yn) %>% group_by_all() %>% summarize(records = n())
-```
-
-3. Create column ´language_other´
-
-```{r}
-input_data %<>% mutate("language_other" = case_when(
-  language == "English / Dutch" ~ "Dutch",
-  language == "English, German" | language == "English/German"  ~ "German",
-  language == "Polish/English/Latin" ~ "Polish | Latin",
-  language == "Russian, English" ~ "Russian",
-  language == "French" ~ "French",
-  language == "Latvian (remaks field only. the rest of fields are coded)" ~ "Latvian",
-  language == "Polish" ~ "Polish" ,
-  language == "Swedish" ~ "Swedish",
-  is.na(language) ~ "unknown",
-  TRUE ~ ""))
-```
-
-4. Inspect data
-
-```{r}
-input_data %>% 
-  select(language, english_yn, language_other) %>% 
+  select(esas_db_yn) %>% 
   group_by_all() %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
+### Programme active y/n?
+
+Summarize `active_yn`:
+
+```{r}
+input_data %>% 
+  select(active_yn) %>% 
+  group_by_all() %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
+# Paragraph 2: Data content
+
+# Paragraph 3: Constraints for sharing data
+
+### Table 3
+
+This table discusses the following dataset properties:
+
+- Sharing interest (Y/n)
+- Financial constraints (y/n)
+- Legal constraints (y/n)
+
+### Sharing interest
+
+Screent content of `sharing_interest_yn`:
+
+```{r}
+input_data %>%
+  select(sharing_interest_yn) %>% 
+  group_by(sharing_interest_yn) %>% 
   summarize(records = n())
 ```
 
-### Finished / Ongoing
+No cleaning required
 
+### Financial constraints
+
+Screent content of `financial_constraints_yn`:
+
+```{r}
+input_data %>%
+  select(financial_constraints_yn) %>% 
+  group_by(financial_constraints_yn) %>% 
+  summarize(records = n())
+```
+
+In table 3, it is better to reformulate to `financial_condition` which should be `OK`(thus `financial_constraints`=`No`), `NOK`(thus `financial_constraints`=`Yes`) or `Unknown`
+
+```{r}
+input_data %<>% 
+  mutate(financial_condition = case_when(
+    financial_constraints_yn == "Yes" ~ "NOK",
+    financial_constraints_yn == "No" ~ "OK",
+    financial_constraints_yn == "Unknown" ~ "-"))
+```
+
+### Legal constraints
+
+In table 3, it is better to reformulate to `legal_condition` which should be `OK`(thus `legal_constraints`=`No`), `NOK`(thus `legal_constraints`=`Yes`) or `Unknown`
+
+```{r}
+input_data %<>% 
+  mutate(legal_condition = case_when(
+    legal_constraints_yn == "Yes" ~ "NOK",
+    legal_constraints_yn == "No" ~ "OK",
+    legal_constraints_yn == "Unknown" ~ "-"))
+```
 
 ### Summary
 
+For this table we use the `formattable` package. FOr this, we need to define the formatters for `y/n` and `OK/NOK` first:
+
+Define formatters:
+
 ```{r}
-input_data %>% 
-    select(country, esas_db_yn, nr_species, english_yn, language_other, active_yn, data_import) %>% 
-  arrange(country) %>% 
-  formattable() %>% 
-  as_image("test.png")
+yn_formatter <-
+  formatter("span",
+            style = 
+              x ~ style(color = ifelse(x == "Yes", "green", 
+                                       ifelse(x == "No", "red", "grey"))),
+              x ~ icontext(ifelse( x == "Yes", "ok", 
+                                   ifelse(x == "No", "remove", "minus")),
+                           ifelse(x == "Yes", "Yes",
+                                  ifelse(x == "No", "No", ""))),
+            "font_size" = 40)
+
+OK_NOK_formatter <-
+  formatter("span",
+            style = 
+              x ~ style(color = ifelse(x == "OK", "green", 
+                                       ifelse(x == "NOK", "red", "grey"))),
+              x ~ icontext(ifelse( x == "OK", "ok", 
+                                   ifelse(x == "NO", "remove", "minus")),
+                           ifelse(x == "OK", "OK",
+                                  ifelse(x == "NOK", "NOK", ""))),
+            "font_size" = 40)
 ```
 
-##
-
-
-GRAPH: Data included or not included in ESAS db
+Generate table 3:
 
 ```{r}
-esas_yn <- 
+table_3 <- 
   input_data %>% 
-    select(esas_db_yn) %>% 
-    group_by_all() %>% 
-    summarize(records = n())
+    select(dataset_id, sharing_interest_yn, financial_condition, legal_condition) %>%
+    rename(`Dataset ID` = dataset_id,
+           `Sharing interest (y/n)` = sharing_interest_yn,
+           `financial condition (OK/NOK))` = financial_condition,
+           `legal condition (OK/NOK)` = legal_condition) %>% 
+    arrange(`Dataset ID`) 
 ```
 
-Barplot data ([why not Pie chart](https://www.data-to-viz.com/caveat/pie.html))
 
 ```{r}
-png(filename = here::here("data","figures","esas_database_yn.png"))
-esas_database_yn <- 
-  ggplot(esas_yn, aes(x = fct_relevel(esas_db_yn, "No", "Partially", "Yes", "Planned", "Unknown")
-                      , y = records)) +
-    geom_bar(colour="black",fill="#FF9933",width=0.8, stat="identity") + 
-    xlab("") + ylab("Number of datasets") +
-    geom_text(aes(label=records), vjust = 1.5, colour = "black") +
-    theme_bw() +
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-          axis.text.x = element_text(size = 20, hjust=1),
-          axis.text.y = element_text(size = 20),
-          axis.title.y = element_text(size = 20)) +
-    theme(axis.text.x = element_text(angle = 45))
-print(esas_database_yn)
+formattable(table_3,
+            align = c("l","c","c","c"),
+            list(
+              `Sharing interest (y/n)` = yn_formatter,
+              `financial condition (OK/NOK))` = OK_NOK_formatter,
+              `legal condition (OK/NOK)` = OK_NOK_formatter)) %>% 
+  as_image(file = "../data/processed/table_3.png")
 ```
-
-
-
-
 
