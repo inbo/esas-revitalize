@@ -20,8 +20,8 @@ library(tidyverse)
 library(janitor)
 library(magrittr)
 library(here)
-library(ggplot2)
 library(knitr)
+library(kableExtra)
 ```
 
 ```{r}
@@ -111,7 +111,8 @@ input_data <-
       recode(country, 
       "Norway and Russia" = "Norway",
       "Eesti" = "Estonia",
-      "UK" = "United Kingdom")) %>% 
+      "UK" = "United Kingdom",
+      "Russia" = "Russian Federation")) %>% 
     mutate(country_clean = str_to_title(country_clean))
 ```
 
@@ -235,7 +236,7 @@ input_data %<>% mutate(dataset_id = case_when(
   country_clean == "Poland" & organization == "Chief Inspector of Environmental Protection" ~ "POL-GIOS",
   country_clean == "Poland" & organization == "Department of Vertebrate Ecology & Zoology, University of Gdansk, Poland" ~ "POL-KEZK",
   country_clean == "Portugal" ~ "PRT",
-  country_clean == "Russia" ~ "RUS",
+  country_clean == "Russian Federation" ~ "RUS",
   country_clean == "Sweden" ~ "SWE",
   country_clean == "Greece" & organization == "Hellenic Ornithological Society" & name_and_acronym == "Actions for the Conservation of Larus audouinii in Greece (LIFE96 NAT/GR/003221)"
  ~ "GRC-HOS-LIFE96",
