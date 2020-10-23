@@ -92,6 +92,12 @@ input_data %<>% rename(
   "information_about"         = "does_your_monitoring_programme_include_information_about")
 ```
 
+Remove responses for which  `sas_data_yn` = `No` (no SAS data available):
+
+```{r remove non sas data}
+input_data %<>% filter(sas_data_yn != "No")
+```
+
 ## Clean country information
 
 Country information is key in the discussion of the report. We need to clean this information.
@@ -132,6 +138,7 @@ Clean `organizaton` to `organization_acronym_clean`
 ```{r}
 input_data %<>% mutate(organization_acronym = recode(organization,
   "INBO" = "Research Institute for Nature and Forest (INBO)",
+  "RBINS" = "Royal Belgian Institute for Natural Sciences (RBINS)",
   "Estonian University of Life Sciences" = "Estonian University of Life Sciences (EMU)", #source: https://www.emu.ee/en/
   "BirdLife Estonia" = "BirdLife Estonia (EOS)", #source:https://www.birdlife.org/europe-and-central-asia/partners/estonia-%E2%80%93-estonian-ornithological-society-eos
   "BSH Federal Maitime and Hydrographic Agency" = "Federal Maritime and Hydrographic Agency (BSH)", #source = https://www.bsh.de/EN/Home/home_node.html
@@ -164,18 +171,12 @@ input_data %>%
   summarize(records = n())
 ```
 
-Remove responses for which  `sas_data_yn` = `No` (no SAS data available):
-
-```{r remove non sas data}
-input_data %<>% filter(sas_data_yn != "No")
-```
-
 ## Name and acronym
 
 Clean `name_and_acronym` to `name_acronym_clean`
 
 ```{r}
-input_data %<>% mutate(name_acronym_clean = recode(name_and_acronym,
+input_data %<>% mutate(programme_acronym = recode(name_and_acronym,
   "German Seabirds at Sea programme" = "German Seabirds at Sea programme (SAS)", 
   "Multiple post-consent and SPA monitoring projects" = "Multiple post-consent and Special Protection Area (SPA) monitoring projects",
   "SAS" = "Brittish Seabirds at Sea programme (SAS)",
@@ -187,7 +188,8 @@ input_data %<>% mutate(name_acronym_clean = recode(name_and_acronym,
   "SEAPOP" = "Seabird populations (SEAPOP)",
   "Monitoring of Wintering Sea Birds (PL: MZPM - Monitoring Zimujacych Ptaków Morskich)" = "Monitoring of Wintering Sea Birds (MZPM)",
   "MZPM" = "Monitoring of Wintering Sea Birds (MZPM)",
-  "ESAS" = "European Seabirds at Sea (ESAS)"
+  "ESAS" = "European Seabirds at Sea (ESAS)",
+  "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091" = "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091)"
 ))
 ```
 
@@ -195,64 +197,163 @@ Compare `name_and_acronym` with `name_acronym_clean`
 
 ```{r}
 input_data %>% 
-  select(name_and_acronym, name_acronym_clean) %>% 
+  select(name_and_acronym, programme_acronym) %>% 
   group_by_all() %>% 
   summarize(records = n())
 ```
 
+
+
 ## Dataset ID
 
-To link all dataset properties to the right dataset, we generate a dataset identifier here. This will be a combination between the country's ISO code, institution acronym and (in case of multiple datasets per country) dataset acronym.
+To link all dataset properties to the right dataset, we generate a dataset identifier here. This will be a combination between the country's ISO code, institution acronym (if not available we make one ourselves) and (in case of multiple datasets per country) dataset acronym.
 
 Add dataset shortname:
 
 ```{r generate shortname}
 input_data %<>% mutate(dataset_id = case_when(
-  country_clean == "Belgium" & organization == "INBO" ~ "BEL-INBO",
-  country_clean == "Belgium" & organization == "RBINS" ~ "BEL-RBINS",
-  country_clean == "Germany" & organization == "BSH Federal Maitime and Hydrographic Agency" ~ "DEU-BSH",
-  country_clean == "Germany" & organization == "FTZ, Kiel University" & name_and_acronym == "German Marine Biodiversity Monitoring" ~ "DEU-FTZ-GMBM",
-  country_clean == "Germany" & organization == "FTZ, Kiel University" & name_and_acronym == "German Seabirds at Sea programme" ~ "DEU-FTZ-GSSP",
-  country_clean == "Germany" & organization == "FTZ, Kiel University" & name_and_acronym == "Offshore Seabird Monitoring in the Schleswig-Holstein coastal sea, North Sea" ~ "DEU-FTZ-OSMS",
-  country_clean == "Spain" & organization == "AZTI" & name_and_acronym == "BIOMAN" ~ "ESP-AZTI-BIO",
-  country_clean == "Spain" & organization == "AZTI" & name_and_acronym == "JUVENA" ~ "ESP-AZTI-JUV",
-  country_clean == "Spain" & organization == "Instituto Español de Oceanografía (IEO)" ~ "ESP-IEO",
-  country_clean == "Estonia" & organization == "BirdLife Estonia" ~ "EST-EOS",
-  country_clean == "Estonia" & organization == "Estonian University of Life Sciences"  ~"EST-EMU",
+  
+  # Belgium
+  country_clean == "Belgium" & organization_acronym == "Research Institute for Nature and Forest (INBO)" ~ "BEL-INBO",
+  country_clean == "Belgium" & organization_acronym == "Royal Belgian Institute for Natural Sciences (RBINS)" ~ "BEL-RBINS",
+  
+  # Estionia
+  country_clean == "Estonia" & organization_acronym == "BirdLife Estonia (EOS)" ~ "EST-EOS",
+  country_clean == "Estonia" & organization_acronym == "Estonian University of Life Sciences (EMU)"  ~"EST-EMU",
+  
+  # France
   country_clean == "France" ~ "FRA",
-  country_clean == "United Kingdom" & organization == "Econ Ecological Consultancy Ltd" ~ "GBR-ECON",
-  country_clean == "United Kingdom" & organization == "HiDef Aerial Surveying Limited" ~ "GBR-HiDef",
-  country_clean == "United Kingdom" & organization == "JNCC" ~ "GBR-JNCC",
-  country_clean == "Ireland" & organization == "Marine Institute" ~ "IRL-MI",
-  country_clean == "Ireland" & organization == "National Parks and Wildlife Service" ~ "IRL-NPWS",
-  country_clean == "Lithuania" ~ "LTU",
+  
+  # Germany
+  country_clean == "Germany" & 
+    organization_acronym == "Federal Maritime and Hydrographic Agency (BSH)" 
+      ~ "DEU-BSH",
+  country_clean == "Germany" & 
+    organization_acronym == "Kiel University, Research and Technology Centre Westcoast (FTZ)" &
+    programme_acronym == "German Marine Biodiversity Monitoring" 
+      ~ "DEU-FTZ-GMBM",
+  country_clean == "Germany" & 
+    organization_acronym == "Kiel University, Research and Technology Centre Westcoast (FTZ)" &
+    programme_acronym == "German Seabirds at Sea programme (SAS)" 
+      ~ "DEU-FTZ-SAS",
+  country_clean == "Germany" & 
+    organization_acronym == "Kiel University, Research and Technology Centre Westcoast (FTZ)" &
+    programme_acronym == "Offshore Seabird Monitoring in the Schleswig-Holstein coastal sea, North Sea" 
+      ~ "DEU-FTZ-OSMS",
+  
+  # Greece
+  country_clean == "Greece" & 
+    organization_acronym == "Hellenic Ornithological Society (HOS)" & 
+    programme_acronym == "Actions for the Conservation of Larus audouinii in Greece (LIFE96 NAT/GR/003221)"
+      ~ "GRC-HOS-LIFE96",
+  
+   country_clean == "Greece" & 
+    organization_acronym == "Hellenic Ornithological Society (HOS) / BirdLife Greece" & 
+    programme_acronym == "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091)" 
+      ~ "GRC-HOS-LIFE03",
+  
+  country_clean == "Greece" & 
+    organization_acronym == "Hellenic Ornithological Society (HOS) / BirdLife Greece" & 
+    programme_acronym == "Concrete conservation measures for the Mediterranean Shag and Audouin’s Gull in Greece, including the inventory of relevant marine IBAs (LIFE07 NAT/GR/000285)" 
+      ~ "GRC-HOS-LIFE07",
+  
+  country_clean == "Greece" & 
+    organization_acronym == "Hellenic Ornithological Society (HOS) / BirdLife Greece" & 
+    programme_acronym == "Hellenic Seabird Project" 
+      ~ "GRC-HOS-HSB",
+  
+  country_clean == "Greece" & 
+   organization_acronym == "Hellenic Ornithological Society (HOS) / BirdLife Greece" & 
+   programme_acronym == "EU Marine Strategy Framework Directive for Greece" 
+      ~ "GRC-HOS-EU",
+
+  # Ireland
+  country_clean == "Ireland" & 
+    organization_acronym == "Marine Institute" ~ "IRL-MI",
+  country_clean == "Ireland" & 
+    organization_acronym == "National Parks and Wildlife Service (NPWS)" ~ "IRL-NPWS",
+ 
+  # Latvia
   country_clean == "Latvia" ~ "LVA",
-  country_clean == "Netherlands" & organization == "Bureau Waardenburg" & name_and_acronym == "MWTL zeevogels" ~ "NLD-BuWA-MWTL",
-  country_clean == "Netherlands" & organization == "Bureau Waardenburg" & platform == "Aerial" ~ "NLD-BuWa-AIR",
-  country_clean == "Netherlands" & organization == "Bureau Waardenburg" & platform == "Ship-based" ~ "NLD-BuWa-SHIP",
-  country_clean == "Netherlands" & organization == "Royal Netherlands Institute for Sea Research" ~ "NLD-NIOZ",
-  country_clean == "Norway" & organization == "Econ Ecological Consultancy" ~ "NOR-ECON",
-  country_clean == "Norway" & organization == "Norwegian Institute for Nature Research" ~ "NOR-NINA",
-  country_clean == "Poland" & organization == "Chief Inspector of Environmental Protection" ~ "POL-GIOS",
-  country_clean == "Poland" & organization == "Department of Vertebrate Ecology & Zoology, University of Gdansk, Poland" ~ "POL-KEZK",
+
+  # Lithuania
+  country_clean == "Lithuania" ~ "LTU",
+
+  # Malta
+ country_clean == "Malta" ~ "MLT",
+
+  # Netherlands
+  country_clean == "Netherlands" & 
+   organization_acronym == "Bureau Waardenburg (BuWa)" & 
+   platform == "Aerial" 
+    ~ "NLD-BuWa-AIR",
+  country_clean == "Netherlands" & 
+   organization_acronym == "Bureau Waardenburg (BuWa)" & 
+   platform == "Ship-based" 
+    ~ "NLD-BuWa-SHIP",
+  country_clean == "Netherlands" & 
+   organization_acronym == "Royal Netherlands Institute for Sea Research (NIOZ)" 
+    ~ "NLD-NIOZ", 
+   country_clean == "Netherlands" & organization_acronym == "Bureau Waardenburg (BuWa)" & 
+   programme_acronym == "MWTL zeevogels" 
+    ~ "NLD-BuWA-MWTL",
+ 
+  # Norway
+  country_clean == "Norway" & 
+   organization_acronym == "Ecological Consultancy (ECON)" 
+    ~ "NOR-ECON",
+  country_clean == "Norway" & 
+   organization_acronym == "Norwegian Institute for Nature Research (NINA)" 
+    ~ "NOR-NINA",
+
+  # Poland
+  country_clean == "Poland" & 
+   organization_acronym == "Chief Inspector of Environmental Protection (GIOS)" 
+    ~ "POL-MZPM-1",
+  country_clean == "Poland" & 
+   organization_acronym == "Department of Vertebrate Ecology & Zoology, University of Gdansk, Poland"
+    ~ "POL-MZPM-2",
+  
+  # Portugal
   country_clean == "Portugal" ~ "PRT",
+
+  # Russian Federation
   country_clean == "Russian Federation" ~ "RUS",
+
+  # Spain
+  country_clean == "Spain" & 
+   organization_acronym == "AZTI Tecnalia (AZTI)" & 
+   programme_acronym == "BIOMAN" 
+    ~ "ESP-AZTI-BIO",
+  country_clean == "Spain" & 
+   organization_acronym == "AZTI Tecnalia (AZTI)" & 
+   programme_acronym == "JUVENA" 
+    ~ "ESP-AZTI-JUV",
+  country_clean == "Spain" & 
+   organization_acronym == "Instituto Español de Oceanografía (IEO)" 
+    ~ "ESP-IEO",
+ 
+  # Sweden
   country_clean == "Sweden" ~ "SWE",
-  country_clean == "Greece" & organization == "Hellenic Ornithological Society" & name_and_acronym == "Actions for the Conservation of Larus audouinii in Greece (LIFE96 NAT/GR/003221)"
- ~ "GRC-HOS-LIFE96",
- country_clean == "Greece" & organization == "Hellenic Ornithological Society / BirdLife Greece" & name_and_acronym == "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091" ~ "GRC-HOS-LIFE03",
- country_clean == "Greece" & organization == "Hellenic Ornithological Society / BirdLife Greece" & name_and_acronym == "Concrete conservation measures for the Mediterranean Shag and Audouin’s Gull in Greece, including the inventory of relevant marine IBAs (LIFE07 NAT/GR/000285)" ~ "GRC-HOS-LIFE07",
- country_clean == "Greece" & organization == "Hellenic Ornithological Society / BirdLife Greece" & name_and_acronym == "Hellenic Seabird Project" ~ "GRC-HOS-HSB",
- country_clean == "Greece" & organization == "Hellenic Ornithological Society / BirdLife Greece" & name_and_acronym == "EU Marine Strategy Framework Directive for Greece" ~ "GRC-HOS-EU",
- country_clean == "Malta" ~ "MLT"
+
+  # United Kingdom
+  country_clean == "United Kingdom" & 
+   organization_acronym == "Ecological Consultancy (ECON)" 
+    ~ "GBR-ECON",
+  country_clean == "United Kingdom" & 
+   organization_acronym == "HiDef Aerial Surveying Limited (HiDef)" 
+    ~ "GBR-HiDef",
+  country_clean == "United Kingdom" & 
+   organization_acronym == "Joint Nature Conservation Committe (JNCC)" 
+    ~ "GBR-JNCC"
   ))
 ```
 
-Inspect dataset shortnames per country (should be 35):
+Inspect dataset shortnames per country:
 
 ```{r inspect dataset shortname}
 input_data %>% 
-  select(country_clean, organization, dataset_id) %>% 
+  select(country_clean, organization_acronym, programme_acronym, dataset_id) %>% 
   group_by_all() %>% 
   summarize(records = n()) %>% 
   kbl()
@@ -268,7 +369,7 @@ input_data %<>%
     dataset_id,
     country_clean,
     organization_acronym,
-    name_acronym_clean,
+    programme_acronym,
     role,
     email_address,
     short_description,
