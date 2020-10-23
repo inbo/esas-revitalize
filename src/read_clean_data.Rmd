@@ -285,17 +285,20 @@ input_data %<>% mutate(dataset_id = case_when(
   # Netherlands
   country_clean == "Netherlands" & 
    organization_acronym == "Bureau Waardenburg (BuWa)" & 
-   platform == "Aerial" 
+   start_year == "2004" &
+   platform == "Aerial" &
     ~ "NLD-BuWa-AIR",
   country_clean == "Netherlands" & 
    organization_acronym == "Bureau Waardenburg (BuWa)" & 
+   start_year == "2004" &
    platform == "Ship-based" 
     ~ "NLD-BuWa-SHIP",
   country_clean == "Netherlands" & 
    organization_acronym == "Royal Netherlands Institute for Sea Research (NIOZ)" 
     ~ "NLD-NIOZ", 
-   country_clean == "Netherlands" & organization_acronym == "Bureau Waardenburg (BuWa)" & 
-   programme_acronym == "MWTL zeevogels" 
+   country_clean == "Netherlands" & 
+    organization_acronym == "Bureau Waardenburg (BuWa)" & 
+    start_year == "1991" 
     ~ "NLD-BuWA-MWTL",
  
   # Norway
