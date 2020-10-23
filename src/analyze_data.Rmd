@@ -21,7 +21,6 @@ library(formattable)
 library(sf)
 library(leaflet)
 library(htmltools)
-library(kableExtra)
 library(htmlwidgets)
 library(webshot)
 ```
