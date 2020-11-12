@@ -98,6 +98,21 @@ Remove responses for which  `sas_data_yn` = `No` (no SAS data available):
 input_data %<>% filter(sas_data_yn != "No")
 ```
 
+## Remove redundant information
+
+For two programmes, the questionnaire has been completed twice: 
+- The MZPM programme
+- Aerial surveys by HiDef
+
+For the MZPM programme, we here keep the information provided by the `Chief Inspector of Environmental Protection` as this information is more inclusive and is confirmed by Dominik Marchowski. For the Arial surveys of HiDef, we keep the last record (4/11/2020) as this is more complete.
+
+```{r}
+input_data %<>% 
+  filter(!timestamp == "11/4/2020 12:34:54") %>%  # Select HiDef programme on timestamp
+  filter(!timestamp == "8/18/2020 8:45:54") # Select on MZPM timestamp
+
+```
+
 ## Clean country information
 
 Country information is key in the discussion of the report. We need to clean this information.
@@ -108,13 +123,23 @@ Show country names:
 input_data %>% distinct(country)
 ```
 
+In case of the `Sheringham Shoal OWF` programme, the country should be `United Kingdom` instead of `Norway`:
+
+```{r}
+input_data %<>% 
+  mutate(country_clean = case_when(
+    name_and_acronym == "Sheringham Shoal OWF" ~ "United Kingdom",
+    TRUE ~ country))
+```
+
+
 For one dataset, the field `country` included two countries: `Norway and Russia`. As this information is linked to the Norwegian Institute for Nature Research, we consider the origin of this dataset to be Norwegian. Additionally, we clean `Eesti`, provide the full name for `UK` and use title case for all country names:
 
 ```{r}
 input_data <-
   input_data %>% 
     mutate(country_clean = 
-      recode(country, 
+      recode(country_clean, 
       "Norway and Russia" = "Norway",
       "Eesti" = "Estonia",
       "UK" = "United Kingdom",
@@ -157,10 +182,22 @@ input_data %<>% mutate(organization_acronym = recode(organization,
   "AZTI" = "AZTI Tecnalia (AZTI)", #source = https://www.euromarinenetwork.eu/membership/organisations/azti-tecnalia
   "HiDef Aerial Surveying Limited" = "HiDef Aerial Surveying Limited (HiDef)", #source = https://hidef.bioconsult-sh.de/
   "JNCC" = "Joint Nature Conservation Committe (JNCC)", #source =
-  "Econ Ecological Consultancy Ltd" = "Ecological Consultancy (ECON)", #source = https://www.econ-ecology.com/,
+  "Econ Ecological Consultancy Ltd" = "Ecological Consultancy (ECON)", #source = https://www.econ-ecology.com/
   "Hellenic Ornithological Society" = "Hellenic Ornithological Society (HOS)", #
-  "Hellenic Ornithological Society / BirdLife Greece" = "Hellenic Ornithological Society (HOS) / BirdLife Greece" #https://www.ornithologiki.gr/index.php?loc=en
+  "Hellenic Ornithological Society / BirdLife Greece" = "Hellenic Ornithological Society (HOS) / BirdLife Greece", #https://www.ornithologiki.gr/index.php?loc=en
+  "University of Cadiz" = "University of Cadiz (UCA)", #https://www.uca.es/?lang=en/
+  "Wageningen Marine Research" = "Wageningen Marine Research (WUR)" #https://www.wur.nl/en
   )) 
+```
+
+Show mapping:
+
+```{r}
+input_data %>% 
+  select(organization, organization_acronym) %>% 
+  group_by_all() %>% 
+  summarize(n = n()) %>% 
+  kbl()
 ```
 
 Total number of organizations holding SAS data:
@@ -189,7 +226,8 @@ input_data %<>% mutate(programme_acronym = recode(name_and_acronym,
   "Monitoring of Wintering Sea Birds (PL: MZPM - Monitoring Zimujacych Ptaków Morskich)" = "Monitoring of Wintering Sea Birds (MZPM)",
   "MZPM" = "Monitoring of Wintering Sea Birds (MZPM)",
   "ESAS" = "European Seabirds at Sea (ESAS)",
-  "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091" = "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091)"
+  "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091" = "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091)",
+  "GORWIND" = "The Gulf of Riga as a Resource for Wind Energy (GORWIND)"
 ))
 ```
 
@@ -199,14 +237,14 @@ Compare `name_and_acronym` with `name_acronym_clean`
 input_data %>% 
   select(name_and_acronym, programme_acronym) %>% 
   group_by_all() %>% 
-  summarize(records = n())
+  summarize(records = n()) %>% 
+  kbl()
 ```
-
-
 
 ## Dataset ID
 
 To link all dataset properties to the right dataset, we generate a dataset identifier here. This will be a combination between the country's ISO code, institution acronym (if not available we make one ourselves) and (in case of multiple datasets per country) dataset acronym.
+
 
 Add dataset shortname:
 
@@ -274,7 +312,12 @@ input_data %<>% mutate(dataset_id = case_when(
     organization_acronym == "National Parks and Wildlife Service (NPWS)" ~ "IRL-NPWS",
  
   # Latvia
-  country_clean == "Latvia" ~ "LVA",
+  country_clean == "Latvia" & 
+    programme_acronym == "Survey of wintering waterbirds at sea" 
+      ~ "LVA-WWAS",        # WWAS = Wintering Waterbirds at Sea
+  country_clean == "Latvia" & 
+    programme_acronym == "The Gulf of Riga as a Resource for Wind Energy (GORWIND)" 
+      ~ "LVA-GORWIND", 
 
   # Lithuania
   country_clean == "Lithuania" ~ "LTU",
@@ -300,11 +343,11 @@ input_data %<>% mutate(dataset_id = case_when(
     organization_acronym == "Bureau Waardenburg (BuWa)" & 
     name_and_acronym == "MWTL zeevogels"
     ~ "NLD-BuWA-MWTL",
+  country_clean == "Netherlands" & 
+   organization_acronym == "Wageningen Marine Research (WUR)" 
+    ~ "NLD-WUR",  
  
   # Norway
-  country_clean == "Norway" & 
-   organization_acronym == "Ecological Consultancy (ECON)" 
-    ~ "NOR-ECON",
   country_clean == "Norway" & 
    organization_acronym == "Norwegian Institute for Nature Research (NINA)" 
     ~ "NOR-NINA",
@@ -312,10 +355,7 @@ input_data %<>% mutate(dataset_id = case_when(
   # Poland
   country_clean == "Poland" & 
    organization_acronym == "Chief Inspector of Environmental Protection (GIOS)" 
-    ~ "POL-MZPM-1",
-  country_clean == "Poland" & 
-   organization_acronym == "Department of Vertebrate Ecology & Zoology, University of Gdansk, Poland"
-    ~ "POL-MZPM-2",
+    ~ "POL-MZPM",
   
   # Portugal
   country_clean == "Portugal" ~ "PRT",
@@ -335,14 +375,22 @@ input_data %<>% mutate(dataset_id = case_when(
   country_clean == "Spain" & 
    organization_acronym == "Instituto Español de Oceanografía (IEO)" 
     ~ "ESP-IEO",
+  country_clean == "Spain" & 
+   organization_acronym == "University of Cadiz (UCA)" 
+    ~ "ESP-UCA", 
  
   # Sweden
   country_clean == "Sweden" ~ "SWE",
 
   # United Kingdom
   country_clean == "United Kingdom" & 
-   organization_acronym == "Ecological Consultancy (ECON)" 
-    ~ "GBR-ECON",
+   organization_acronym == "Ecological Consultancy (ECON)" &
+   programme_acronym == "Seagreen Firth of Forth zone"
+    ~ "GBR-ECON-SFF",
+ country_clean == "United Kingdom" & 
+   organization_acronym == "Ecological Consultancy (ECON)" &
+   programme_acronym == "Sheringham Shoal Offshore Wind Farm (OWF)"
+    ~ "NOR-ECON-OWF",
   country_clean == "United Kingdom" & 
    organization_acronym == "HiDef Aerial Surveying Limited (HiDef)" 
     ~ "GBR-HiDef",

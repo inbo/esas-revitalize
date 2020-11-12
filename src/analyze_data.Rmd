@@ -23,6 +23,7 @@ library(leaflet)
 library(htmltools)
 library(htmlwidgets)
 library(webshot)
+library(kableExtra)
 ```
 
 # Import data
@@ -38,6 +39,41 @@ global_countries_spatial <- st_read(here::here("./data/input/CNTR_RG_60M_2020_43
 ```
 
 # Paragraph 1: General project information
+
+## Text
+
+Total number of datasets:
+
+```{r}
+input_data %>% nrow()
+```
+
+Total number of organizations:
+
+```{r}
+input_data %>% distinct(organization_acronym) %>% count()
+```
+
+Integration in ESAs database? Summarize `esas_db_yn`:
+
+```{r}
+input_data %>% 
+  select(esas_db_yn) %>% 
+  group_by_all() %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
+Programme active y/n? Summarize `active_yn`:
+
+```{r}
+input_data %>% 
+  select(active_yn) %>% 
+  group_by_all() %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
 
 ## Figure 1: Number of datasets per country
 
@@ -60,6 +96,14 @@ focal_countries_spatial <-
     filter(NAME_ENGL %in% input_data$country_clean)
 ```
 
+filter out information for Denmark and Finland:
+
+```{r}
+finland_denmark <- 
+  global_countries_spatial %>% 
+    filter(NAME_ENGL == "Finland" | NAME_ENGL == "Denmark")
+```
+
 
 Join information with `countries_spatial`
 
@@ -72,8 +116,9 @@ focal_countries_spatial %<>%
 Plot information:
 
 ```{r}
-bins <- c(1, 2, 3, 4)
-pal <- colorNumeric("YlOrRd", domain = focal_countries_spatial$n_datasets)
+bins <- c(1, 2, 3, 4, 5,6)
+labels <- c("1", "2", "3", "4", "5","6")
+binpal <- colorBin("YlOrRd", domain = focal_countries_spatial$n_datasets, bins = bins)
 
 figure_1 <-
   leaflet(focal_countries_spatial) %>%
@@ -82,23 +127,33 @@ figure_1 <-
           zoom = 3.75) %>%
   addTiles() %>%
   addPolygons(
-    fillColor = ~pal(n_datasets),
+    fillColor = ~binpal(n_datasets),
     weight = 2,
     opacity = 1,
     color = "grey",
     dashArray = "3",
     fillOpacity = 1,
-    highlight = highlightOptions(
-      weight = 5,
-      color = "#666",
-      dashArray = "",
-      fillOpacity = 0.7,
-      bringToFront = TRUE),
     label = ~htmlEscape(n_datasets)) %>%
+  addPolygons(data = filter(global_countries_spatial, NAME_ENGL == "Finland"), 
+              weight = 2,
+              opacity = 1,
+              color = "grey",
+              dashArray = "3",
+              fillOpacity = 1,
+              fillColor = "black") %>% 
+  addPolygons(data = filter(global_countries_spatial, NAME_ENGL == "Denmark"), 
+              weight = 2,
+              opacity = 1,
+              color = "grey",
+              dashArray = "3",
+              fillOpacity = 1,
+              fillColor = "grey") %>% 
   addLegend("bottomright",
-            pal = pal, values = ~n_datasets,
+            pal = binpal, values = ~n_datasets,
             title = "number of SAS datasets",
-            opacity = 1)
+            opacity = 1,
+            labFormat = function(type, cuts, p)
+              {paste0(labels)})
 figure_1
 ```
 
@@ -130,61 +185,449 @@ This table discusses the following dataset properties:
 ```{r}
 table_1 <- 
   input_data %>%
-      select(dataset_id, country_clean, organization_acronym, name_acronym_clean, esas_db_yn, active_yn) %>% 
+      select(dataset_id, country_clean, organization_acronym, programme_acronym, esas_db_yn, active_yn) %>% 
   rename(`Dataset ID` = dataset_id) %>%
   rename(`Country` = country_clean,
          `Organization (acronym)` = organization_acronym,
-         `Programme name and/or acronym` = name_acronym_clean,
+         `Programme name and/or acronym` = programme_acronym,
          `ESAS database (y/n)` = esas_db_yn,
          `Active (y/n)` = active_yn) %>% 
-      arrange(`Country`) %>% 
-      kbl() %>% 
-      kable_classic(full_width = T, html_font = "Arial") %>% 
-      kable_styling(bootstrap_options = c("striped", "hover")) 
-table_1
+      arrange(`Country`)
+kbl(table_1)
+```
+
+Define formatter:
+
+```{r}
+database_yn_formatter <-
+  formatter("span",
+     style = 
+     x ~ style(color = ifelse(x == "Yes" |
+                              x == "Partially" | 
+                              x == "Planned", "green",
+                                ifelse(x == "No", "red", "grey"))),
+     x ~ icontext(ifelse(x == "Yes", "ok",
+                    ifelse(x == "No", "remove",
+                      ifelse(x == "Planned", "time", 
+                        ifelse(x == "Unknown", "-", "")))),
+                  
+                  ifelse(x == "Yes", "Yes",
+                    ifelse(x == "No", "No", 
+                      ifelse(x == "Partially", "%", 
+                        ifelse(x == "Planned", "", "?"))))
+                  ),
+                 "font_size" = 40)
+
+
+yn_formatter <-
+  formatter("span",
+            style = 
+              x ~ style(color = ifelse(x == "Yes", "green", 
+                                       ifelse(x == "No", "red", "grey"))),
+              x ~ icontext(ifelse( x == "Yes", "ok", 
+                                   ifelse(x == "No", "remove", "minus")),
+                           ifelse(x == "Yes", "Yes",
+                                  ifelse(x == "No", "No", ""))),
+            "font_size" = 40)
 ```
 
 ```{r}
- as_image(table_1, file = "../data/processed/table_1.png")
+formattable(table_1,
+            align = c("l","l","l","l", "c", "c"),
+            list(
+              `ESAS database (y/n)` = database_yn_formatter,
+              `Active (y/n)` = yn_formatter))%>% 
+  as.htmlwidget(width = "1200px") %>%
+  saveWidget("table_1.html", selfcontained = TRUE)
 ```
 
-## Text
-
-### Integration in ESAs database?
-
-Summarize `esas_db_yn`:
-
 ```{r}
-input_data %>% 
-  select(esas_db_yn) %>% 
-  group_by_all() %>% 
-  summarize(records = n(),
-            percentage = round(n()/nrow(input_data)*100))
-```
-
-### Programme active y/n?
-
-Summarize `active_yn`:
-
-```{r}
-input_data %>% 
-  select(active_yn) %>% 
-  group_by_all() %>% 
-  summarize(records = n(),
-            percentage = round(n()/nrow(input_data)*100))
+webshot("table_1.html",
+        file = "table_1.png",
+        cliprect = "viewport")
 ```
 
 # Paragraph 2: Data content
 
+This table should include:
+
+- Nr of occurrences 
+- Geographical coverage
+- Taxonomic Coverage
+- Platform
+
+## Clean data
+
+### Dataset size
+
+```{r}
+input_data %>% 
+  select(nr_occurrences) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+Clean values:
+
+```{r}
+input_data %<>% 
+  mutate(nr_occurrences_clean = recode(nr_occurrences,
+    "10.000 - 100.000" = "10.000-100.000",
+    "100.000 - 1.000.000" = "100.000-1.000.000",
+    "Unknown" = ""))
+```
+
+Compare `nr_occurrences` with `nr_occurrences_clean`
+
+```{r}
+input_data %>% 
+  select(nr_occurrences, nr_occurrences_clean) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+Define `nr_occurrences_clean` as ordered factor:
+
+```{r}
+input_data %<>% 
+  mutate(nr_occurrences_clean = 
+           factor(nr_occurrences_clean,
+                  levels = c("1-10.000", "10.000-100.000", "100.000-1.000.000", ">1.000.000"))) %>% 
+  mutate(nr_occurrences_clean = fct_explicit_na(nr_occurrences_clean, ""))
+```
+
+
+### Geographical scope
+
+Inspect values
+
+```{r}
+input_data %>% 
+  select(geographical_scope) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+Make new columns `OSPAR`, `HELCOM` and `Other`:
+
+```{r}
+input_data %<>% 
+  mutate(ospar = recode(geographical_scope,
+    "Arctic waters (OSPAR Region I)" = "I",
+    "Arctic waters (OSPAR Region I), Greater North Sea (OSPAR Region II), Bay of Biscay and Iberian Coast (OSPAR Region IV), Wider Atlantic (OSPAR Region V), Tropics" = "I,II,IV,V",
+   "Baltic Sea" = "",
+   "Baltic Sea, The Gulf of Finland of Baltic Sea" = "",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "IV",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV), Only shelf Spanish waters in the N and NW of the Iberian Coast" = "IV",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV), Wider Atlantic (OSPAR Region V)" = "IV,V",
+   "Celtic Seas (OSPAR Region III)" = "III",
+   "East Mediterranean" = "",
+   "Greater North Sea (OSPAR Region II)" = "II",
+   "Greater North Sea (OSPAR Region II), Baltic Sea" = "II",
+   "Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III)" = "II,III",
+   "Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III), Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "II,III,IV",
+   "The Irish EEZ" = "II,III",
+   "UK waters" = "II,III"
+    ))
+```
+
+Helcom areas:
+
+```{r}
+input_data %<>% 
+  mutate(baltic_sea = recode(geographical_scope,
+    "Arctic waters (OSPAR Region I)" = "",
+    "Arctic waters (OSPAR Region I), Greater North Sea (OSPAR Region II), Bay of Biscay and Iberian Coast (OSPAR Region IV), Wider Atlantic (OSPAR Region V), Tropics" = "",
+   "Baltic Sea" = "yes",
+   "Baltic Sea, The Gulf of Finland of Baltic Sea" = "yes",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV), Only shelf Spanish waters in the N and NW of the Iberian Coast" = "",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV), Wider Atlantic (OSPAR Region V)" = "",
+   "Celtic Seas (OSPAR Region III)" = "",
+   "East Mediterranean" = "",
+   "Greater North Sea (OSPAR Region II)" = "",
+   "Greater North Sea (OSPAR Region II), Baltic Sea" = "yes",
+   "Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III)" = "",
+   "Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III), Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "",
+   "The Irish EEZ" = "",
+   "UK waters" = ""
+    ))
+```
+
+Inspect new values:
+
+```{r}
+input_data %>% 
+  select(geographical_scope, ospar, baltic_sea) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+Seperate geographical locations on comma:
+
+```{r}
+geographical_scope_data <-
+  input_data %<>% 
+    separate(geographical_scope, 
+             into = c("scope_1", "scope_2", "scope_3", "scope_4", "scope_5"),
+             sep = ",")
+```
+
+From wide to long dataset:
+
+```{r}
+geographical_scope_data <- 
+  geographical_scope_data %>%  
+    gather(
+      key = "key",
+      value = "scope",
+      "scope_1", "scope_2", "scope_3", "scope_4", "scope_5",
+      na.rm = T) %>% 
+  mutate(scope = trimws(scope, "left")) %>% 
+  select(dataset_id, key, scope)
+```
+
+Summarize scope
+
+```{r}
+geographical_scope_data %>% 
+  select(scope) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+Recode values:
+
+```{r}
+geographical_scope_data %<>% 
+  mutate(scope_clean = recode(scope, 
+    "Arctic waters (OSPAR Region I)" = "OSPAR I",
+    "Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "OSPAR IV",
+    "Celtic Seas (OSPAR Region III)" = "OSPAR III",
+    "Greater North Sea (OSPAR Region II)" = "OSPAR II",
+    "Only shelf Spanish waters in the N and NW of the Iberian Coast" = "shelf Spanish waters in N/NW Iberian Coast",
+    "The Gulf of Finland of Baltic Sea" = "Gulf of Finland",
+    "The Irish EEZ" = "Irish EEZ",
+    "Wider Atlantic (OSPAR Region V)" = "OSPAR V"
+    ))
+```
+
+```{r}
+geographical_scope_data %>% 
+  select(scope, scope_clean) %>% 
+  group_by_all() %>% 
+  summarize(n = n(),
+            `%` = round(n()/nrow(geographical_scope_data)*100)) 
+```
+
+From long to wide dataset:
+
+```{r}
+geographical_scope_data %<>% 
+  select(-scope) %>% 
+  spread(key,value = scope_clean)
+```
+
+Concate to one column `geographical_scope_clean`
+
+```{r}
+geographical_scope_data <-
+  geographical_scope_data %>%
+    unite(col = geographical_scope_clean, 
+          scope_1, scope_2, scope_3, scope_4, scope_5, 
+          na.rm = T, sep = ", ") 
+```
+
+Add `geographic_scope_clean` to `input_data`:
+
+```{r}
+input_data <- 
+  input_data %>% 
+    left_join(geographical_scope_data, 
+              by = "dataset_id") %>% 
+    select(-c(scope_1,scope_2,scope_3,scope_4,scope_5))
+```
+
+### Taxonomic Coverage
+
+Inspect values:
+
+```{r}
+input_data %>% 
+  select(taxonomic_scope) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+Seperate into `birds_yn`, `marine_mammals_yn`, `other`:
+
+```{r}
+input_data %<>%
+  separate(taxonomic_scope,
+             into = c("birds_yn", "marine_mammals_yn", "other"),
+             sep = ", ",
+             remove = FALSE)
+```
+
+Clean data:
+- recode to yes/no for birds and marine mammals or empty if NA
+- Clean `other` field
+
+```{r}
+input_data %<>% 
+  mutate(other = case_when(
+    birds_yn == "Multispecies" ~ "Multispecies", # add multispecies information to `other`
+    TRUE ~ other)) %>% 
+  mutate(birds_yn = "yes") %>%  # all datasets have birds
+  mutate(marine_mammals_yn = case_when(
+    marine_mammals_yn == "Marine mammals" ~ "yes", TRUE ~ "")) %>% 
+  mutate(other = recode(other,
+    "fish and turtles" = "Fish, turtles",
+    "oceanography" = "Oceanography",
+    "reptiles" = "Reptiles",
+    "turtle" = "Turtles",
+    .missing = "")) 
+```
+
+Summarize results
+
+```{r}
+input_data %>% 
+  select(taxonomic_scope, birds_yn, marine_mammals_yn, other) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+### Temporal scope
+
+Inspect `start_year` and `end_year`
+
+```{r}
+input_data %>% 
+  select(start_year, end_year) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+
+Recode `ongoing` to `2020` in `end_year
+
+```{r}
+input_data %<>% 
+  mutate(end_year = recode(end_year, "ongoing" = "2020"))
+```
+
+Concatenate to `temporal_scope`:
+
+```{r}
+input_data %<>% 
+  mutate(temporal_scope = paste(start_year, end_year, sep = "-"))
+```
+
+```{r}
+input_data %>% 
+  select(start_year, end_year, temporal_scope) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+
+### Platform
+
+```{r}
+input_data %>% 
+  select(platform) %>% group_by_all() %>% summarize(n = n())
+```
+
+Generate two columns: `ship-based` and `aerial`
+
+```{r}
+input_data <- 
+  input_data %>% 
+    mutate(ship_based = case_when(
+      platform == "Ship-based" |
+        platform == "Ship-based, Aerial" ~ "yes",
+      TRUE ~ "")) %>% 
+    mutate(aerial = case_when(
+       platform == "Aerial" |
+        platform == "Ship-based, Aerial" ~ "yes",   
+       TRUE ~ ""))
+```
+
+## Table 2: Data content
+
+This table should include:
+
+- Nr of occurrences 
+- Geographical coverage
+- Taxonomic Coverage
+- Platform
+
+```{r}
+table_2 <-
+input_data %>% 
+  select(dataset_id, nr_occurrences_clean, temporal_scope, ospar, baltic_sea, 
+         marine_mammals_yn, aerial, ship_based) %>% 
+  rename(
+    `Dataset ID` = dataset_id,
+    `Nr of occurrences` = nr_occurrences_clean,
+    `Temporal scope` = temporal_scope,
+    `OSPAR region` = ospar,
+    `Baltic Sea` = baltic_sea,
+    `Marine mammals` = marine_mammals_yn,
+    `Plane` = aerial,
+    `Ship` = ship_based) %>% 
+  arrange(`Dataset ID`)
+  
+```
+
+Define formatters:
+
+```{r}
+y_formatter <-
+  formatter("span",
+            style = 
+              x ~ style(color = ifelse(x == "yes", "green", "")),
+              x ~ icontext(ifelse(x == "yes", "ok", ""),
+                           ifelse(x == "Yes", "Yes", "")))
+```
+
+
+```{r}
+formattable(table_2, 
+            align = c("l", "r", "c", "c", "c", "c", "c"),
+            list(
+    `Nr of occurrences`  = color_tile("yellow", "red"),
+    `Baltic Sea` = y_formatter,
+    `Marine mammals` = y_formatter,
+    `Plane` = y_formatter,
+    `Ship` = y_formatter)) %>% 
+  as.htmlwidget(width = "1200px") %>%
+  saveWidget("table_2.html", selfcontained = TRUE)
+```
+
+
+```{r}
+webshot("table_2.html",
+        file = "table_2.png",
+        cliprect = "viewport")
+```
+
+## Text
+
+Summarize amount of programmes that include marine mammals:
+
+```{r}
+input_data %>% 
+  select(marine_mammals_yn) %>% 
+  group_by(marine_mammals_yn) %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
+
+
 # Paragraph 3: Constraints for sharing data
 
-### Table 3
-
-This table discusses the following dataset properties:
-
-- Sharing interest (Y/n)
-- Financial constraints (y/n)
-- Legal constraints (y/n)
+## Clean data
 
 ### Sharing interest
 
@@ -194,7 +637,8 @@ Screent content of `sharing_interest_yn`:
 input_data %>%
   select(sharing_interest_yn) %>% 
   group_by(sharing_interest_yn) %>% 
-  summarize(records = n())
+  summarize(records = n(),
+            `?` = n()/nrow(input_data)*100)
 ```
 
 No cleaning required
@@ -207,7 +651,8 @@ Screent content of `financial_constraints_yn`:
 input_data %>%
   select(financial_constraints_yn) %>% 
   group_by(financial_constraints_yn) %>% 
-  summarize(records = n())
+  summarize(records = n(),
+            `?` = n()/nrow(input_data)*100)
 ```
 
 In table 3, it is better to reformulate to `financial_condition` which should be `OK`(thus `financial_constraints`=`No`), `NOK`(thus `financial_constraints`=`Yes`) or `Unknown`
@@ -222,6 +667,14 @@ input_data %<>%
 
 ### Legal constraints
 
+```{r}
+input_data %>%
+  select(legal_constraints_yn) %>% 
+  group_by(legal_constraints_yn) %>% 
+  summarize(records = n(),
+            `?` = n()/nrow(input_data)*100)
+```
+
 In table 3, it is better to reformulate to `legal_condition` which should be `OK`(thus `legal_constraints`=`No`), `NOK`(thus `legal_constraints`=`Yes`) or `Unknown`
 
 ```{r}
@@ -232,7 +685,14 @@ input_data %<>%
     legal_constraints_yn == "Unknown" ~ "-"))
 ```
 
-### Summary
+## Table 3
+
+This table discusses the following dataset properties:
+
+- Sharing interest (Y/n)
+- Financial constraints (y/n)
+- Legal constraints (y/n)
+
 
 For this table we use the `formattable` package. FOr this, we need to define the formatters for `y/n` and `OK/NOK` first:
 
@@ -283,6 +743,140 @@ formattable(table_3,
               `Sharing interest (y/n)` = yn_formatter,
               `financial condition (OK/NOK))` = OK_NOK_formatter,
               `legal condition (OK/NOK)` = OK_NOK_formatter)) %>% 
-  as_image(file = "../data/processed/table_3.png")
+  as.htmlwidget(width = "1200px") %>%
+  saveWidget("table_3.html", selfcontained = TRUE)
 ```
+
+
+```{r}
+webshot("table_3.html",
+        file = "table_3.png",
+        cliprect = "viewport")
+```
+
+# Other variables of interest
+
+### Data storage
+
+Inspect content 
+
+```{r, eval=FALSE}
+input_data %>% 
+    select(data_storage) %>% 
+    group_by(data_storage) %>% 
+    summarize(records = n())
+```
+
+Some cleaning steps:
+
+- Change `Relational database (Postgres, MySQL, etc.)` to `Relational database` as we will seperate on `,` later:
+
+```{r}
+input_data <-
+  input_data %>% mutate(data_storage = recode(data_storage,
+    "Relational database (Postgres, MySQL, etc.)" = "Relational database",
+    "Relational database (Postgres, MySQL, etc.), CSV files" = "Relational database, CSV files",
+    "Relational database (Postgres, MySQL, etc.), Microsoft Excel" = "Relational database, Microsoft Excel"))
+```
+
+- Seperate `data_storage` into different units:
+
+```{r}
+data_storage <- 
+  input_data %>% separate(col = data_storage, 
+                            into = c("storage_1", "storage_2"),
+                            sep = ",")
+```
+
+- From wide to long dataset:
+
+```{r}
+data_storage <-
+  data_storage %>% 
+  gather(key = key, value = value, storage_1: storage_2, na.rm = TRUE, factor_key = TRUE) %>% 
+  select(key, value) %>% 
+  mutate(value = str_trim(value, side = "left")) %>%    # trim whitespace
+  mutate(value = recode(value, 
+    "But since 2015 we are collecting data using electronic devices. A Cybertracker based App was built. Data is needed to be imported to Paradox though." = "Paradox"))  %>% # Recode long sentence to `Paradox` 
+  mutate(value = factor(value, levels = c("CSV files", "Microsoft Excel", "Microsoft Access", "Paradox", "Relational database")))
+```
+
+- Count records:
+
+```{r}
+data_storage %>% 
+    select(value) %>% 
+    group_by(value) %>% 
+    summarize(records = n(),
+              percentage = n()/nrow(input_data)*100)
+data_storage
+```
+
+# Discussion per country
+
+Define function to retrieve information in discussion section
+
+```{r}
+summary_per_datasetid <-
+  function(id){
+    input_data %>% filter(dataset_id == id) %>% 
+      mutate(start_year = factor(start_year)) %>% 
+      select(dataset_id,
+        email_address,
+        country_clean,
+        organization_acronym,
+        programme_acronym,
+        role,
+        programm_lead,
+        short_description,
+        active_yn,
+        start_year,
+        end_year,
+        taxonomic_scope,
+        geographical_scope_clean,
+        nr_occurrences_clean,
+        platform,
+        data_storage,
+        esas_db_yn,
+        remarks,
+        sharing_interest_yn,
+        financial_constraints_yn,
+        expected_costs,
+        legal_constraints_yn,
+        sharing_conditions,
+        other_relevant_remarks,
+        other_sas_data) %>% 
+      rownames_to_column() %>% 
+      pivot_longer(-rowname, names_to = "column") %>% 
+      select(-rowname) %>% 
+      kbl() %>% 
+      kable_styling(bootstrap_options = c("striped", "hover"))
+      }
+```
+
+Function to retrieve organization codes per country:
+
+```{r}
+datasetid_per_country <- 
+  function(country_name){
+    input_data %>% 
+      filter(country_clean == country_name) %>% 
+      select(dataset_id)
+    }
+```
+
+Retrieve dataset id's for a specific country:
+
+```{r}
+datasetid_per_country("United Kingdom")
+```
+
+Summarize information for a specific `dataset_id`:
+
+```{r}
+summary_per_datasetid("GBR-HiDef")
+```
+
+
+
 
