@@ -390,7 +390,7 @@ input_data %<>% mutate(dataset_id = case_when(
  country_clean == "United Kingdom" & 
    organization_acronym == "Ecological Consultancy (ECON)" &
    programme_acronym == "Sheringham Shoal Offshore Wind Farm (OWF)"
-    ~ "NOR-ECON-OWF",
+    ~ "GBR-ECON-OWF",
   country_clean == "United Kingdom" & 
    organization_acronym == "HiDef Aerial Surveying Limited (HiDef)" 
     ~ "GBR-HiDef",
