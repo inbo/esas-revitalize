@@ -868,13 +868,13 @@ datasetid_per_country <-
 Retrieve dataset id's for a specific country:
 
 ```{r}
-datasetid_per_country("United Kingdom")
+datasetid_per_country("Netherlands")
 ```
 
 Summarize information for a specific `dataset_id`:
 
 ```{r}
-summary_per_datasetid("GBR-HiDef")
+summary_per_datasetid("NLD-WUR")
 ```
 
 
