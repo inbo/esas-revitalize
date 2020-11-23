@@ -317,7 +317,10 @@ input_data %<>% mutate(dataset_id = case_when(
       ~ "LVA-WWAS",        # WWAS = Wintering Waterbirds at Sea
   country_clean == "Latvia" & 
     programme_acronym == "The Gulf of Riga as a Resource for Wind Energy (GORWIND)" 
-      ~ "LVA-GORWIND", 
+      ~ "LVA-GOR", 
+  country_clean == "Latvia" & 
+    programme_acronym == "MARMONI" 
+      ~ "LVA-MAR",   
 
   # Lithuania
   country_clean == "Lithuania" ~ "LTU",
