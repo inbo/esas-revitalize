@@ -143,7 +143,8 @@ input_data <-
       "Norway and Russia" = "Norway",
       "Eesti" = "Estonia",
       "UK" = "United Kingdom",
-      "Russia" = "Russian Federation")) %>% 
+      "Russia" = "Russian Federation",
+      "Danmark" = "Denmark")) %>% 
     mutate(country_clean = str_to_title(country_clean))
 ```
 
@@ -336,7 +337,7 @@ input_data %<>% mutate(programme_id = case_when(
   country_clean == "Sweden" ~ "SWE", 
       
   # Danmark
-  country_clean == "Danmark" ~ "DAN",
+  country_clean == "Danmark" ~ "DNK",
 
   # Germany
   country_clean == "Germany" & 
@@ -471,7 +472,7 @@ Resturecure and Select columns relevant for further discussion (to reduce size o
 ```{r}
 input_data %<>% 
   select(
-    dataset_id,
+    programme_id,
     country_clean,
     organization_acronym,
     programme_acronym,
