@@ -36,13 +36,21 @@ Import google sheet
 input_data <- read_sheet("https://docs.google.com/spreadsheets/d/1uR4z8UYCje7CfqYDezbBlBIiSsvyyalfSPwWZEBfcIQ/edit#gid=1639204022", col_types = "c")
 ```
 
-Save raw dataset to GitHub:
+# Data cleaning
+
+## Remove fields with email addresses
+
+The field `Email Address` contains GDPR sensitive data and should be removed from the dataset.
 
 ```{r}
-write.csv(input_data, here::here("data", "input", "input_data.csv"), row.names = FALSE)
+input_data %<>% select(-`Email Address`)
 ```
 
-# Data cleaning
+Save this file as an interim file. This will be the starting point for further analyses:
+
+```{r}
+write.csv(input_data, here::here("data", "input", "input_data_without_email.csv"), row.names = FALSE)
+```
 
 ## Clean column names
 
@@ -92,7 +100,7 @@ input_data %<>% rename(
   "information_about"         = "does_your_monitoring_programme_include_information_about")
 ```
 
-Remove responses for which  `sas_data_yn` = `No` (no SAS data available):
+For the generation of the tables and figures, we exclude responses that indicated not to hold Seabird at Sea data. We thus remove responses for which  `sas_data_yn` = `No` (no SAS data available):
 
 ```{r remove non sas data}
 input_data %<>% filter(sas_data_yn != "No")
@@ -108,21 +116,26 @@ Show country names:
 input_data %>% distinct(country)
 ```
 
-In case of the `Sheringham Shoal OWF` programme, the country should be `United Kingdom` instead of `Norway`:
+- In case of the `Sheringham Shoal OWF` program, the country should be `United Kingdom` instead of `Norway`:
 
 ```{r}
-input_data %<>% 
-  mutate(country_clean = case_when(
-    name_and_acronym == "Sheringham Shoal OWF" ~ "United Kingdom",
-    TRUE ~ country))
+input_data 
 ```
 
 
-For one dataset, the field `country` included two countries: `Norway and Russia`. As this information is linked to the Norwegian Institute for Nature Research, we consider the origin of this dataset to be Norwegian. Additionally, we clean `Eesti`, provide the full name for `UK` and use title case for all country names:
+- The data managed by the Norwegian Institute for Nature Research, the field `country` included two countries: `Norway and Russia`. We consider the origin of this dataset to be Norwegian. 
+
+- Change `Eesti` to Estonia
+- Change `Danmark` to `Denmark`
+- Provide the full name for `UK` and `Russia`
+- Use title case for all country names
 
 ```{r}
 input_data <-
   input_data %>% 
+    mutate(country_clean = case_when(
+      name_and_acronym == "Sheringham Shoal OWF" ~ "United Kingdom",
+      TRUE ~ country)) %>% 
     mutate(country_clean = 
       recode(country_clean, 
       "Norway and Russia" = "Norway",
@@ -142,9 +155,9 @@ input_data %>%
   summarize(n = n())
 ```
 
-## Organization name and/or acronym
+## Clean organization name and/or acronym
 
-Clean `organizaton` to `organization_acronym_clean`
+Where possible, We clean organization information to the structure `Organization full name (acronym).
 
 ```{r}
 input_data %<>% mutate(organization_acronym = recode(organization,
@@ -166,7 +179,6 @@ input_data %<>% mutate(organization_acronym = recode(organization,
   # Poland
   "Chief Inspector of Environmental Protection" = "Chief Inspector of Environmental Protection (GIOS)", #source = http://www.gios.gov.pl/en/
 
-
   # Danmark
   "Aarhus University" = "Aarhus University (AU)",  
   
@@ -186,7 +198,7 @@ input_data %<>% mutate(organization_acronym = recode(organization,
   "INBO" = "Research Institute for Nature and Forest (INBO)",
   "RBINS" = "Royal Belgian Institute for Natural Sciences (RBINS)",
   
-  # Great Brittain
+  # Great Britain
   "Econ Ecological Consultancy" =  "Ecological Consultancy (ECON)", #source = https://www.econ-ecology.com/
     "HiDef Aerial Surveying Limited" = "HiDef Aerial Surveying Limited (HiDef)", #source = https://hidef.bioconsult-sh.de/
   "JNCC" = "Joint Nature Conservation Committe (JNCC)", #source =
@@ -206,7 +218,6 @@ input_data %<>% mutate(organization_acronym = recode(organization,
   "Hellenic Ornithological Society / BirdLife Greece" = "Hellenic Ornithological Society (HOS) / BirdLife Greece"
   #https://www.ornithologiki.gr/index.php?loc=en
 
-
   )) 
 ```
 
@@ -216,21 +227,11 @@ Show mapping:
 input_data %>% 
   select(organization, organization_acronym) %>% 
   group_by_all() %>% 
-  summarize(n = n()) %>% 
-  kbl()
+  summarize(n = n()) 
 ```
+## Clean programme name 
 
-Total number of organizations holding SAS data:
-
-```{r}
-input_data %>% 
-  distinct(organization_acronym) %>% 
-  summarize(records = n())
-```
-
-## Programme name and/or acronym
-
-Clean `name_and_acronym` to `name_acronym_clean`
+Where possible, We clean programme information to the structure `programme full name (acronym).
 
 ```{r}
 input_data %<>% mutate(programme_acronym = recode(name_and_acronym,
@@ -280,18 +281,14 @@ Compare `name_and_acronym` with `name_acronym_clean`
 input_data %>% 
   select(name_and_acronym, programme_acronym) %>% 
   group_by_all() %>% 
-  summarize(records = n()) %>% 
-  kbl()
+  summarize(records = n())
 ```
 
-## Progamme ID
+## Generate Progamme ID
 
-To link all programme properties to the right dataset, we generate a programme identifier here. This will be a combination between the country's ISO code, institution acronym (if not available we make one ourselves) and (in case of multiple programmes per country) programme acronym.
+To link programme properties to the right dataset, we generate a programme identifier here. This will be a combination between the country's ISO code, institution acronym (if not available we make one ourselves) and (in case of multiple programmes per country) programme acronym.
 
-
-Add dataset shortname:
-
-```{r generate shortname}
+```{r}
 input_data %<>% mutate(programme_id = case_when(
   
   # Finland
@@ -456,13 +453,12 @@ Inspect dataset shortnames per country:
 input_data %>% 
   select(country_clean, organization_acronym, programme_acronym, programme_id) %>% 
   group_by_all() %>% 
-  summarize(records = n()) %>% 
-  kbl()
+  summarize(records = n()) 
 ```
 
-# Export cleaned dataset
+# Export processed dataset
 
-Resturecure and Select columns relevant for further discussion (to reduce size of the dataset)
+Resturecure and select columns relevant for further discussion (to reduce size of the dataset)
 
 ```{r}
 input_data %<>% 
@@ -472,7 +468,6 @@ input_data %<>%
     organization_acronym,
     programme_acronym,
     role,
-    email_address,
     short_description,
     programm_lead,
     active_yn,
@@ -511,5 +506,5 @@ input_data %<>%
 Export cleaned dataset: 
 
 ```{r}
-write.csv(input_data, here::here("data", "intermediate", "input_data_cleaned.csv"), row.names = FALSE)
+write.csv(input_data, here::here("data", "processed", "processed_data.csv"), row.names = FALSE)
 ```
