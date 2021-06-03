@@ -67,6 +67,14 @@ global_countries_spatial <- st_read(here::here("./data/input/CNTR_RG_60M_2020_43
 
 # Paragraph 1: General programme information
 
+Total number of organizations holding SAS data:
+
+```{r}
+input_data %>% 
+  distinct(organization_acronym) %>% 
+  summarize(records = n())
+```
+
 ## Statistics for text
 
 Total number of programmes:
