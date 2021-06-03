@@ -59,7 +59,7 @@ input_data %<>%
            "MLT")))
 ```
 
-Import spatial information dataset for map:
+Import spatial information data for map:
 
 ```{r import geojson}
 global_countries_spatial <- st_read(here::here("./data/input/CNTR_RG_60M_2020_4326.geojson"))
@@ -162,9 +162,6 @@ This table discusses the following programme properties:
 - Country
 - Organization (acronym)
 - Programme name and/or acronym
-
-Recode partially and active:
-
 
 ```{r}
 table_1 <- 
@@ -309,7 +306,7 @@ input_data %>%
   summarize(records = n())
 ```
 
-Seperate into `birds_yn`, `marine_mammals_yn`, `other`:
+Separate into `birds_yn`, `marine_mammals_yn`, `other`:
 
 ```{r}
 input_data %<>%
@@ -399,7 +396,7 @@ input_data <-
 
 Some cleaning steps:
 
-- Change `Relational database (Postgres, MySQL, etc.)` to `Relational database` as we will seperate on `,` later:
+- Change `Relational database (Postgres, MySQL, etc.)` to `Relational database` as we will separate on `,` later:
 **REMARK: code could be simplified, to do later**
 
 ```{r}
@@ -518,7 +515,7 @@ input_data %>%
             `?` = n()/nrow(input_data)*100)
 ```
 
-## Statistics for text 
+2## Statistics for text 
 
 Integration in ESAs database? Summarize `esas_db_yn`:
 
@@ -529,6 +526,16 @@ input_data %>%
   summarize(records = n(),
             percentage = round(n()/nrow(input_data)*100))
 ```
+
+Summary per country:
+
+```{r}
+input_data %>% 
+  select(country_clean, esas_db_yn) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
 
 ## Table 3
 
