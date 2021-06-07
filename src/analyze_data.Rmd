@@ -1,0 +1,658 @@
+---
+title: "Analyze ESAS questionnaire for draft report"
+author: "Lien Reyserhove"
+output: html_document
+---
+
+# General settings
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+Load libraries
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(magrittr)
+library(here)
+library(knitr)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+library(webshot)
+library(kableExtra)
+
+
+# library(formattable)
+
+```
+
+# Import data
+
+```{r import data}
+input_data <- read.delim(file = here::here("data", "processed", "cleaned_data.csv"), sep = ",")
+```
+
+Define level order for sorting in tables:
+
+```{r}
+input_data %<>% 
+  mutate(programme_id = factor(programme_id,
+         levels = c(
+           "FIN-SYKE", "FIN-MNH",
+           "EST-EMU", "EST-EOS",
+           "LVA-GOR", "LVA-LIFE05", "LVA-MAR", "LVA-WWAS",
+           "LTU",
+           "RUS",
+           "POL-MZPM",
+           "SWE",
+           "DNK",
+           "DEU-BSH", "DEU-GMBM", "DEU-OSMS", "DEU-SAS",
+           "NOR-NINA",
+           "NLD-BuWa-AIR", "NLD-BuWa-SHIP", "NLD-MWTL", "NLD-NIOZ", "NLD-WUR",
+           "BEL-INBO", "BEL-RBINS",
+           "GBR-HIDEF", "GBR-JNCC", "GBR-OWF", "GBR-SFF",
+           "IRL-MI", "IRL-NPWS",
+           "FRA", 
+           "ESP-AV3", "ESP-BIO", "ESP-JUV", "ESP-PEL", "ESP-UCA",
+           "PRT",
+           "GRC-HSP", "GRC-LIFE03", "GRC-LIFE07", "GRC-LIFE96", "GRC-MSFD",
+           "MLT")))
+```
+
+
+# General findings
+
+## Statistics for text
+
+Total number of organizations holding SAS data:
+
+```{r}
+input_data %>% 
+  distinct(organization_acronym) %>% 
+  summarize(records = n())
+```
+
+Total number of programmes:
+
+```{r}
+input_data %>% nrow()
+```
+
+## Figure 1: Number of datasets per country
+
+Import spatial information data for map:
+
+```{r import geojson}
+global_countries_spatial <- st_read(here::here("./data/input/CNTR_RG_60M_2020_4326.geojson"))
+```
+Generate `datasets_per_country`
+
+```{r}
+datasets_per_country <- 
+  input_data %>% 
+    select(country_clean) %>% 
+    group_by(country_clean) %>% 
+    summarize(n_datasets = n())
+datasets_per_country
+```
+
+filter spatial information on countries of interest
+
+```{r}
+focal_countries_spatial <- 
+  global_countries_spatial %>% 
+    filter(NAME_ENGL %in% input_data$country_clean)
+```
+
+Join information with `countries_spatial`
+
+```{r}
+focal_countries_spatial %<>% 
+  left_join(datasets_per_country,
+            by = c("NAME_ENGL" = "country_clean"))
+```
+
+Plot information:
+
+```{r}
+bins <- c(1, 2, 3, 4, 5,6)
+labels <- c("1", "2", "3", "4", "5","6")
+binpal <- colorBin("YlOrRd", domain = focal_countries_spatial$n_datasets, bins = bins)
+
+figure_1 <-
+  leaflet(focal_countries_spatial) %>%
+  setView(lng = 9,
+          lat = 51,
+          zoom = 3.75) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~binpal(n_datasets),
+    weight = 2,
+    opacity = 1,
+    color = "grey",
+    dashArray = "3",
+    fillOpacity = 1,
+    label = ~htmlEscape(n_datasets)) %>%
+  addLegend("bottomright",
+            pal = binpal, values = ~n_datasets,
+            title = "number of SAS datasets",
+            opacity = 1,
+            labFormat = function(type, cuts, p)
+              {paste0(labels)})
+figure_1
+```
+
+Save html via Export -> Save as web page or via saveWidget:
+
+```{r}
+saveWidget(figure_1,
+           "figure_1.html",
+           selfcontained = TRUE)
+```
+
+```{r}
+webshot("figure_1.html",
+        file = "../data/processed/figure_1.png",
+        cliprect = "viewport")
+```
+
+## Table 1: General project information
+
+This table discusses the following programme properties:
+
+- Programme ID
+- Country
+- Organization (acronym)
+- Programme name and/or acronym
+
+```{r}
+table_1 <- 
+  input_data %>%
+      select(programme_id, country_clean, organization_acronym, programme_acronym) %>% 
+  rename(`Programme ID` = programme_id) %>%
+  rename(`Country` = country_clean,
+         `Organization` = organization_acronym,
+         `Programme name/acronym` = programme_acronym) %>% 
+  arrange(`Programme ID`)
+kbl(table_1)
+```
+
+Export as .tsv
+
+```{r}
+write_tsv(table_1, path = here::here("data", "processed", "table_1.tsv"))
+```
+
+
+# Data compatibility for inclusion in ESAS
+
+This paragraph includes information on:
+
+- Temporal scope
+- Number of occurrences 
+- Geographical coverage
+- Taxonomic coverage
+- Platform of observations
+- Data format
+
+To generate statistics and tables, we first clean some of these variables.
+
+## Temporal scope
+
+Inspect `start_year` and `end_year`
+
+```{r}
+input_data %>% 
+  select(start_year, end_year) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+When the programme is still active, we use `now` as end year.
+
+```{r}
+input_data %<>% mutate(temporal_scope = case_when(
+  active_yn == "Yes" ~ paste(start_year, "now",sep = "-"),
+  active_yn == "No" ~ paste(start_year, end_year, sep ="-")))
+```
+
+
+```{r}
+input_data %>% 
+  select(start_year, end_year, temporal_scope) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+
+## Number of occurrences
+
+```{r}
+input_data %>% 
+  select(nr_occurrences) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+Clean values:
+
+```{r}
+input_data %<>% 
+  mutate(nr_occurrences_clean = recode(nr_occurrences,
+    "1-10.000" = "1-10K",
+    "10.000 - 100.000" = "10K-100K",
+    "100.000 - 1.000.000" = "100K-1M",
+    ">1.000.000" = ">1M",
+    "Unknown" = ""))
+```
+
+Compare `nr_occurrences` with `nr_occurrences_clean`
+
+```{r}
+input_data %>% 
+  select(nr_occurrences, nr_occurrences_clean) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+## Geographical scope
+
+Inspect values
+
+```{r}
+input_data %>% 
+  select(geographical_scope) %>% 
+  group_by_all() %>% 
+  summarize(records = n()) 
+```
+
+We will make the distinction between programmes coming from
+- OSPAR regions
+- HELCOM regions
+- Other
+
+- Make column `OSPAR` (value I - V):
+
+```{r}
+input_data %<>% 
+  mutate(ospar = recode(geographical_scope,
+    "Arctic waters (OSPAR Region I)" = "I",
+    "Arctic waters (OSPAR Region I), Greater North Sea (OSPAR Region II), Bay of Biscay and Iberian Coast (OSPAR Region IV), Wider Atlantic (OSPAR Region V), Tropics" = "I,II,IV,V",
+    "Arctic waters (OSPAR Region I), Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III), Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "I, II, III, IV",
+   "Baltic Sea" = "",
+   "Baltic Sea, The Gulf of Finland of Baltic Sea" = "",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "IV",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV), Only shelf Spanish waters in the N and NW of the Iberian Coast" = "IV",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV), Wider Atlantic (OSPAR Region V)" = "IV,V",
+   "Celtic Seas (OSPAR Region III)" = "III",
+   "East Mediterranean" = "",
+   "Greater North Sea (OSPAR Region II)" = "II",
+   "Greater North Sea (OSPAR Region II), Baltic Sea, DK EEZ of the above" = "II",
+   "Greater North Sea (OSPAR Region II), Baltic Sea" = "II",
+   "Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III)" = "II,III",
+   "Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III), Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "II,III,IV",
+   "The Irish EEZ" = "II,III",
+   "UK waters" = "II,III"
+    ))
+```
+
+- Helcom areas (value yes/no):
+
+```{r}
+input_data %<>% 
+  mutate(baltic_sea = recode(geographical_scope,
+    "Arctic waters (OSPAR Region I)" = "",
+    "Arctic waters (OSPAR Region I), Greater North Sea (OSPAR Region II), Bay of Biscay and Iberian Coast (OSPAR Region IV), Wider Atlantic (OSPAR Region V), Tropics" = "",
+    "Arctic waters (OSPAR Region I), Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III), Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "",
+   "Baltic Sea" = "yes",
+   "Baltic Sea, The Gulf of Finland of Baltic Sea" = "yes",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV), Only shelf Spanish waters in the N and NW of the Iberian Coast" = "",
+   "Bay of Biscay and Iberian Coast (OSPAR Region IV), Wider Atlantic (OSPAR Region V)" = "",
+   "Celtic Seas (OSPAR Region III)" = "",
+   "East Mediterranean" = "",
+   "Greater North Sea (OSPAR Region II)" = "",
+   "Greater North Sea (OSPAR Region II), Baltic Sea" = "yes",
+   "Greater North Sea (OSPAR Region II), Baltic Sea, DK EEZ of the above" = "yes",
+   "Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III)" = "",
+   "Greater North Sea (OSPAR Region II), Celtic Seas (OSPAR Region III), Bay of Biscay and Iberian Coast (OSPAR Region IV)" = "",
+   "The Irish EEZ" = "",
+   "UK waters" = ""
+    ))
+```
+
+Inspect new values:
+
+```{r}
+input_data %>% 
+  select(geographical_scope, ospar, baltic_sea) %>% 
+  group_by_all() %>% 
+  summarize(records = n()) 
+```
+
+## Taxonomic Coverage
+
+Inspect values:
+
+```{r}
+input_data %>% 
+  select(taxonomic_scope) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+We here make the distinction between 
+- presence of birds (y/n
+- presence of marine mammals (y/n)
+- presence of other species groups
+
+Generate: `birds_yn`, `marine_mammals_yn`, `other`:
+
+```{r}
+input_data %<>%
+  separate(taxonomic_scope,
+             into = c("birds_yn", "marine_mammals_yn", "other"),
+             sep = ", ",
+             remove = FALSE)
+```
+
+Clean data:
+- recode to yes/no for birds and marine mammals or empty if NA
+- Clean `other` field
+
+```{r}
+input_data %<>% 
+  mutate(other = case_when(
+    birds_yn == "Multispecies" ~ "Multispecies", # add multispecies information to `other`
+    TRUE ~ other)) %>% 
+  mutate(birds_yn = "yes") %>%  # all datasets have birds
+  mutate(marine_mammals_yn = case_when(
+    marine_mammals_yn == "Marine mammals" ~ "yes", TRUE ~ "")) %>% 
+  mutate(other = recode(other,
+    "fish and turtles" = "Fish, turtles",
+    "oceanography" = "Oceanography",
+    "reptiles" = "Reptiles",
+    "turtle" = "Turtles",
+    .missing = "")) 
+```
+
+Summarize results
+
+```{r}
+input_data %>% 
+  select(taxonomic_scope, birds_yn, marine_mammals_yn, other) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+## Platform
+
+```{r}
+input_data %>% 
+  select(platform) %>% group_by_all() %>% summarize(n = n())
+```
+We make the distinction between ship-based and aerial platforms:
+
+```{r}
+input_data <- 
+  input_data %>% 
+    mutate(ship_based = case_when(
+      platform == "Ship-based" |
+        platform == "Ship-based, Aerial" ~ "yes",
+      TRUE ~ "")) %>% 
+    mutate(aerial = case_when(
+       platform == "Aerial" |
+        platform == "Ship-based, Aerial" ~ "yes",   
+       TRUE ~ ""))
+```
+
+## Data storage
+
+```{r}
+input_data %>% 
+  select(data_storage) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+``` 
+Some cleaning steps:
+
+- Change `Relational database (Postgres, MySQL, etc.)` to `Relational database` as we will separate on `,` later:
+
+```{r}
+input_data <-
+  input_data %>% mutate(data_storage = recode(data_storage,
+    "Relational database (Postgres, MySQL, etc.)" = "Relational database",
+    "Relational database (Postgres, MySQL, etc.), CSV files" = "Relational database, CSV files",
+    "Relational database (Postgres, MySQL, etc.), Microsoft Excel" = "Relational database, Microsoft Excel",
+    "Relational database (Postgres, MySQL, etc.), Paradox" = "Relational database, Paradox"))
+```
+
+- Separate `data_storage` into different units:
+
+```{r}
+data_storage <- 
+  input_data %>% separate(col = data_storage, 
+                            into = c("storage_1", "storage_2"),
+                            sep = ",",
+                            remove = FALSE)
+```
+
+- From wide to long dataset:
+
+```{r}
+data_storage <-
+  data_storage %>% 
+    gather(key = key, 
+           value = value, 
+           storage_1: storage_2, 
+           na.rm = TRUE, 
+           factor_key = TRUE) %>% 
+  select(data_storage, key, value)
+```
+
+Show `value`:
+
+```{r}
+data_storage %>% 
+  select(value) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+Clean `value`:
+
+```{r}
+data_storage <-
+  data_storage %>% 
+   mutate(value = str_trim(value, side = "left")) %>%    # trim whitespace
+   mutate(value = recode(value, 
+    "But since 2015 we are collecting data using electronic devices. A Cybertracker based App was built. Data is needed to be imported to Paradox though." = "Paradox"))  %>% 
+    mutate(value = recode(value, "position information is stored as shapefiles" = "shapefiles"))
+```
+
+- Count records:
+
+```{r}
+data_storage %>% 
+  select(value) %>% 
+  group_by_all %>% 
+  summarize(records = n(),
+            percentage = n()/44*100)
+```
+## Dataset content quality
+
+Dataset content quality was assessed using two criteria: (1) current inclusion in the ESAS database and (2) sampling methodology. 
+
+- Number of programmes already or partially included in the ESAS database:
+
+```{r}
+input_data %>% 
+  filter(esas_db_yn == "Yes" | esas_db_yn == "Partially") %>% count()
+```
+
+- Sampling methodology: ship-based observations generated by distance observation methodes combined with snapshot counts for flying birds
+
+```{r}
+low_quality_ship <- 
+  bind_rows(
+
+    # No distance method nor snapshot counts   
+    tibble(
+        input_data %>% 
+          filter(platform == "Ship-based" | platform == "Ship-based, Aerial") %>% 
+          filter(ship_based_distance == "No" | is.na(ship_based_distance)) %>% 
+          filter(ship_based_flying_birds == "No" | is.na(ship_based_flying_birds))),
+    
+    # distance method but no snapshot counts
+    tibble(
+      input_data %>% 
+        filter(platform == "Ship-based" | platform == "Ship-based, Aerial") %>% 
+        filter(ship_based_distance == "Yes") %>% 
+        filter(ship_based_flying_birds == "No" | is.na(ship_based_flying_birds))),
+    # distance method but no snapshot counts
+
+    tibble(
+      input_data %>% 
+        filter(platform == "Ship-based" | platform == "Ship-based, Aerial") %>% 
+        filter(ship_based_distance == "No" | is.na(ship_based_distance)) %>%
+        filter(ship_based_flying_birds == "Yes"))
+  )  
+low_quality_ship
+```
+
+Do one or more of these programmes combine low quality ship data with high quality aerial data?
+
+```{r}
+low_quality_ship %>% 
+  filter(platform == "Ship-based, Aerial" | distance_estimation == "Yes") 
+```
+```{r}
+input_data %>% 
+  filter(platform == "Ship-based" | platform == "Ship-based, Aireal") %>% 
+  filter(ship_based_distance == "No" & ship_based_flying_birds == "Yes")
+```
+
+```{r}
+input_data %>% 
+  filter(platform == "Aerial") %>% 
+  filter(distance_estimation == "No" | is.na(distance_estimation))
+```
+
+
+## Table 2: Data content
+
+This table includes:
+
+- Programme ID
+- Temporal scope
+- Nr of occurrences 
+- Geographical coverage (OSPAR region, Baltic SEA)
+- Taxonomic Coverage (inclusion of marine mammals)
+- Platform (plane or ship)
+
+```{r}
+table_2 <-
+input_data %>% 
+  select(programme_id, temporal_scope, nr_occurrences_clean, ospar, baltic_sea, 
+         marine_mammals_yn, aerial, ship_based) %>% 
+  rename(
+    `Programme ID` = programme_id,
+    `Nr of occurrences` = nr_occurrences_clean,
+    `Temporal scope` = temporal_scope,
+    `OSPAR region` = ospar,
+    `Baltic Sea` = baltic_sea,
+    `Marine mammals` = marine_mammals_yn,
+    `Plane` = aerial,
+    `Ship` = ship_based) %>% 
+  arrange(`Programme ID`)
+table_2
+```
+
+```{r}
+write_tsv(table_2, path = here::here("data", "processed", "table_2.tsv"))
+```
+
+# Constraints for sharing data
+
+This paragraph includes information on:
+
+- Integration in the ESAS database
+- Interest to share data
+- Legal constraints for sharing data
+- Financial constraints for sharing data
+
+## Integration in ESAS database
+
+Integration in ESAS database? Summarize `esas_db_yn`:
+
+```{r}
+input_data %>% 
+  select(esas_db_yn) %>% 
+  group_by_all() %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
+## Sharing interest
+
+Screen content of `sharing_interest_yn`:
+
+```{r}
+input_data %>%
+  select(sharing_interest_yn) %>% 
+  group_by(sharing_interest_yn) %>% 
+  summarize(records = n(),
+            `?` = n()/nrow(input_data)*100)
+```
+
+## Financial constraints
+
+Screen content of `financial_constraints_yn`:
+
+```{r}
+input_data %>%
+  select(financial_constraints_yn) %>% 
+  group_by(financial_constraints_yn) %>% 
+  summarize(records = n(),
+            `?` = n()/nrow(input_data)*100)
+```
+
+### Legal constraints
+
+```{r}
+input_data %>%
+  select(legal_constraints_yn) %>% 
+  group_by(legal_constraints_yn) %>% 
+  summarize(records = n(),
+            `?` = n()/nrow(input_data)*100)
+```
+
+## Table 3
+
+This table discusses the following dataset properties:
+
+- Inclusion in ESAS db (y/n)
+- Sharing interest (Y/n)
+- Financial constraints (y/n)
+- Legal constraints (y/n)
+
+Generate table 3:
+
+```{r}
+table_3 <- 
+  input_data %>% 
+    select(programme_id, esas_db_yn, sharing_interest_yn, financial_constraints_yn, legal_constraints_yn) %>%
+    rename(`Programme ID` = programme_id,
+           `Inclusion ESAS DB` = esas_db_yn,
+           `Sharing interest` = sharing_interest_yn,
+           `financial constraints` = financial_constraints_yn,
+           `legal constraints` = legal_constraints_yn) %>% 
+    arrange(`Programme ID`) 
+```
+
+
+```{r}
+write_tsv(table_3, path = here::here("data", "processed", "table_3.tsv"))
+```
+
+
+

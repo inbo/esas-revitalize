@@ -1,0 +1,510 @@
+---
+title: "Read and clean data "
+author: "Lien Reyserhove"
+date: "25 augustus 2020"
+output: html_document
+---
+
+
+# General settings
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+Load libraries
+
+```{r, warning=FALSE, message=FALSE}
+library(googlesheets4)
+library(tidyverse)
+library(janitor)
+library(magrittr)
+library(here)
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+gs4_deauth()
+```
+
+# Import data
+
+Import google sheet
+
+```{r, message=FALSE}
+input_data <- read_sheet("https://docs.google.com/spreadsheets/d/1uR4z8UYCje7CfqYDezbBlBIiSsvyyalfSPwWZEBfcIQ/edit#gid=1639204022", col_types = "c")
+```
+
+# Data cleaning
+
+## Remove fields with email addresses
+
+The field `Email Address` contains GDPR sensitive data and should be removed from the dataset.
+
+```{r}
+input_data %<>% select(-`Email Address`)
+```
+
+Save this file as an interim file. This will be the starting point for further analyses:
+
+```{r}
+write.csv(input_data, here::here("data", "input", "input_data_without_email.csv"), row.names = FALSE)
+```
+
+## Clean column names
+
+Actions:
+
+- Clean columns names
+
+```{r, echo=FALSE, message=FALSE}
+input_data %<>% clean_names() 
+```
+
+- Rename headers
+
+```{r, echo=FALSE}
+input_data %<>% rename(
+  "sas_data_yn"               = "has_your_organization_monitored_seabirds_at_sea_past_or_present",
+  "name_and_acronym"          = "name_and_or_acronym_of_the_monitoring_programme_if_not_specified_please_put_none",
+  "short_description"         = "short_description_or_url_of_the_purpose",
+  "programm_lead"             = "organization_s_leading_or_commissioning_the_monitoring_programme",
+  "country"                   = "country_where_this_organization_is_based",
+  "role"                      = "what_is_your_role_in_this_monitoring_programme",
+  "active_yn"                 = "is_this_monitoring_programme_currently_active",
+  "protocol_yn"               = "data_are_collected_according_to_esas_protocol",
+  "nr_occurrences"                = "number_of_species_occurrence_records_i_e_species_key_records",
+  "data_storage"              = "data_are_stored_as",
+  "data_import"               = "data_are_imported_into_above_system",
+  "language"                  = "language_use_in_data_e_g_english_dutch",
+  "esas_db_yn"                = "data_are_included_in_esas_database",
+  "data_sample__yn"           = "can_you_provide_a_sample_of_the_data_to_help_us_assess_data_compatibility",
+  "other_sas_data"            = "are_you_aware_of_other_seabird_at_sea_monitoring_programmes_in_your_country_please_provide_contact_information_if_possible",
+  "sharing_interest_yn"       = "is_there_any_interest_for_sharing_data_with_esas",
+  "financial_constraints_yn" = "are_there_any_financial_constraints_for_sharing_data_with_esas",
+  "legal_constraints_yn"    = "are_there_any_intellectual_ownership_constraints_for_sharing_data_with_esas",
+  "db_model_yn"               = "are_you_aware_of_the_current_esas_database_model",
+  "shortcomings_esas_model"   = "if_your_answer_to_the_previous_question_was_yes_can_you_specify_potential_shortcomings_of_the_current_esas_database_model_for_integrating_your_data",
+  "expected_costs"            = "if_your_answer_to_the_previous_question_was_yes_can_you_give_an_estimation_of_the_expected_cost_to_incorporate_the_data_in_the_esas_database",
+  "ship_based_line_transect" = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_line_transect_methodology",
+  "ship_based_strip_transect" = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_strip_transect_methodology",
+  "ship_based_flying_birds"   = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_snapshot_count_for_flying_birds",
+  "ship_based_distance"       = "if_your_monitoring_programme_includes_ship_based_observations_please_specify_the_specific_method_distance_estimation",
+  "aerial_digital_survey"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_digital_survey",
+  "aerial_observer_based"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_observer_based_survey",
+  "aerial_line_transect"      = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_line_transects",  
+  "aerial_strip_transect"     = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_strip_transects",  
+  "distance_estimation"       = "if_your_monitoring_programme_includes_aerial_observations_please_specify_the_specific_method_distance_estimation",
+  "sharing_conditions"        = "if_your_answer_to_the_previous_question_was_yes_can_you_specify_what_those_constraints_are_and_or_under_what_conditions_data_could_be_shared",  
+  "information_about"         = "does_your_monitoring_programme_include_information_about")
+```
+
+For the generation of the tables and figures, we exclude responses that indicated not to hold Seabird at Sea data. We thus remove responses for which  `sas_data_yn` = `No` (no SAS data available):
+
+```{r remove non sas data}
+input_data %<>% filter(sas_data_yn != "No")
+```
+
+## Clean country information
+
+Country information is key in the discussion of the report. We need to clean this information.
+
+Show country names:
+
+```{r}
+input_data %>% distinct(country)
+```
+
+- In case of the `Sheringham Shoal OWF` program, the country should be `United Kingdom` instead of `Norway`:
+
+```{r}
+input_data 
+```
+
+
+- The data managed by the Norwegian Institute for Nature Research, the field `country` included two countries: `Norway and Russia`. We consider the origin of this dataset to be Norwegian. 
+
+- Change `Eesti` to Estonia
+- Change `Danmark` to `Denmark`
+- Provide the full name for `UK` and `Russia`
+- Use title case for all country names
+
+```{r}
+input_data <-
+  input_data %>% 
+    mutate(country_clean = case_when(
+      name_and_acronym == "Sheringham Shoal OWF" ~ "United Kingdom",
+      TRUE ~ country)) %>% 
+    mutate(country_clean = 
+      recode(country_clean, 
+      "Norway and Russia" = "Norway",
+      "Eesti" = "Estonia",
+      "UK" = "United Kingdom",
+      "Russia" = "Russian Federation",
+      "Danmark" = "Denmark")) %>% 
+    mutate(country_clean = str_to_title(country_clean))
+```
+
+Compare original and cleaned country names:
+
+```{r}
+input_data %>% 
+  select(country, country_clean) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+
+## Clean organization name and/or acronym
+
+Where possible, We clean organization information to the structure `Organization full name (acronym).
+
+```{r}
+input_data %<>% mutate(organization_acronym = recode(organization,
+                                                     
+  # Finland
+  "Finnish Environment Institute" = "Finnish Environment Institute (SYKE)",                                                      
+  # Estonia
+  "Estonian University of Life Sciences" = "Estonian University of Life Sciences (EMU)", #source: https://www.emu.ee/en/
+  "BirdLife Estonia" = "BirdLife Estonia (EOS)", #source:https://www.birdlife.org/europe-and-central-asia/partners/estonia-%E2%80%93-estonian-ornithological-society-eos                                     
+
+    # Latvia
+  "Latvian Ornithological society" = "Latvian Ornithological Society (LOB)", #source = https://www.birdlife.org/europe-and-central-asia/partners/latvia-%E2%80%93-latvian-ornithological-society-lob
+  "Latvian Ornithological Society" = "Latvian Ornithological Society (LOB)",
+  "Nature Research Centre" = "Nature Research Centre (NRC)", #source = http://www.gamtostyrimai.lt/en/
+    
+  # Russia
+  "Saint-Petersburg Research Center of Russian Academy of sciences" = "Scientific Research Center for Ecological Safety (SRCES RAS)", #source = http://www.istc.int/en/institute/9789                    
+  
+  # Poland
+  "Chief Inspector of Environmental Protection" = "Chief Inspector of Environmental Protection (GIOS)", #source = http://www.gios.gov.pl/en/
+
+  # Danmark
+  "Aarhus University" = "Aarhus University (AU)",  
+  
+  # Germany
+  "BSH Federal Maitime and Hydrographic Agency" = "Federal Maritime and Hydrographic Agency (BSH)", #source = https://www.bsh.de/EN/Home/home_node.html,
+  "FTZ, Kiel University" = "Kiel University, Research and Technology Centre Westcoast (FTZ)", # source = https://www.ftz.uni-kiel.de/en/about-us
+  
+  # Norway
+  "Norwegian Institute for Nature Research" = "Norwegian Institute for Nature Research (NINA)", #source = https://www.nina.no/english
+
+  # The Netherlands
+  "Bureau Waardenburg" = "Bureau Waardenburg (BuWa)",
+  "Royal Netherlands Institute for Sea Research" = "Royal Netherlands Institute for Sea Research (NIOZ)", #source = https://www.nioz.nl/en,
+    "Wageningen Marine Research" = "Wageningen Marine Research (WUR)", #https://www.wur.nl/en  
+
+   # Belgium
+  "INBO" = "Research Institute for Nature and Forest (INBO)",
+  "RBINS" = "Royal Belgian Institute for Natural Sciences (RBINS)",
+  
+  # Great Britain
+  "Econ Ecological Consultancy" =  "Ecological Consultancy (ECON)", #source = https://www.econ-ecology.com/
+    "HiDef Aerial Surveying Limited" = "HiDef Aerial Surveying Limited (HiDef)", #source = https://hidef.bioconsult-sh.de/
+  "JNCC" = "Joint Nature Conservation Committe (JNCC)", #source =
+  "Econ Ecological Consultancy Ltd" = "Ecological Consultancy (ECON)", #source = https://www.econ-ecology.com/
+
+  # Ireland
+  "National Parks and Wildlife Service" = "National Parks and Wildlife Service (NPWS)", #source = https://www.npws.ie/
+
+  # Spain
+  "SPEA" = "Society for the Study of Birds (SPEA)", #source = https://www.spea.pt/en/about-us/spea/
+    "AZTI" = "AZTI Tecnalia (AZTI)", #source = https://www.euromarinenetwork.eu/membership/organisations/azti-tecnalia
+  "University of Cadiz" = "University of Cadiz (UCA)", #https://www.uca.es/?lang=en/
+  "Instituto Español de Oceanografía" = "Instituto Español de Oceanografía (IEO)",
+
+   # Greece
+  "Hellenic Ornithological Society" = "Hellenic Ornithological Society (HOS)", #
+  "Hellenic Ornithological Society / BirdLife Greece" = "Hellenic Ornithological Society (HOS) / BirdLife Greece"
+  #https://www.ornithologiki.gr/index.php?loc=en
+
+  )) 
+```
+
+Show mapping:
+
+```{r}
+input_data %>% 
+  select(organization, organization_acronym) %>% 
+  group_by_all() %>% 
+  summarize(n = n()) 
+```
+## Clean programme name 
+
+Where possible, We clean programme information to the structure `programme full name (acronym).
+
+```{r}
+input_data %<>% mutate(programme_acronym = recode(name_and_acronym,
+  # Latvia
+  "GORWIND" = "The Gulf of Riga as a Resource for Wind Energy (GORWIND)",
+
+  # Latvia
+  "Baltic MPAs - Marine protected areas in the Eastern Baltic Sea LIFE05 NAT/LV/000100" = "LIFE project (LIFE05 NAT/LV/000100)",
+
+  # Danmark
+  "Several (NOVANA as a more permanent scheme)" = "",
+
+  # Germany                                         
+  "German Seabirds at Sea programme" = "German Seabirds at Sea programme (SAS)", 
+
+  # Norway
+    "SEAPOP" = "Seabird populations (SEAPOP)",
+                                                  
+  # The Netherlands  
+  "MWTL zeevogels" = "Monitoring van de Waterstaatkundige Toestand des Lands (MWTL), zeevogels",
+
+  # Great Brittain
+  "Multiple post-consent and SPA monitoring projects" = "Multiple post-consent and Special Protection Area (SPA) monitoring projects",
+  "SAS" = "Brittish Seabirds at Sea programme (SAS)",
+  "Sheringham Shoal OWF" = "Sheringham Shoal Offshore Wind Farm (OWF)",
+
+  # Portugal
+  "ESAS" = "European Seabirds at Sea (ESAS)",
+  
+  # Greece 
+  "Conservation measures for Falco eleonorae in Greece (LIFE03 NAT/GR/000091" = "LIFE project (LIFE03 NAT/GR/000091)",
+  "Concrete conservation measures for the Mediterranean Shag and Audouin’s Gull in Greece, including the inventory of relevant marine IBAs (LIFE07 NAT/GR/000285)" = "LIFE project (LIFE07 NAT/GR/000285)",
+  "Actions for the Conservation of Larus audouinii in Greece (LIFE96 NAT/GR/003221)" = "LIFE project (LIFE96 NAT/GR/003221)",
+  
+  # Malta
+  "LIFE PanPuffinus!: Improving the conservation status of endemic Balearic and Yelkouan shearwaters by ensuring safe land and sea (LIFE19-NAT_MT_000982)" = "LIFE project (LIFE19 NAT/MT/000982)",
+
+  # Other
+  "None" = "",
+  "None. We do not do monitoring" = ""
+))
+```
+
+Compare `name_and_acronym` with `name_acronym_clean`
+
+```{r}
+input_data %>% 
+  select(name_and_acronym, programme_acronym) %>% 
+  group_by_all() %>% 
+  summarize(records = n())
+```
+
+## Generate Progamme ID
+
+To link programme properties to the right dataset, we generate a programme identifier here. This will be a combination between the country's ISO code, institution acronym (if not available we make one ourselves) and (in case of multiple programmes per country) programme acronym.
+
+```{r}
+input_data %<>% mutate(programme_id = case_when(
+  
+  # Finland
+  country_clean == "Finland" & organization_acronym == "Finnish Environment Institute (SYKE)" ~ "FIN-SYKE",
+  country_clean == "Finland" & organization_acronym == "Metsähallitus Nature and Heritage" ~ "FIN-MNH",
+  
+  # Latvia
+  country_clean == "Latvia" & 
+    programme_acronym == "Survey of wintering waterbirds at sea" 
+      ~ "LVA-WWAS",        # WWAS = Wintering Waterbirds at Sea
+  country_clean == "Latvia" & 
+    programme_acronym == "The Gulf of Riga as a Resource for Wind Energy (GORWIND)" 
+      ~ "LVA-GOR", 
+  country_clean == "Latvia" & 
+    programme_acronym == "MARMONI" 
+      ~ "LVA-MAR",
+  country_clean == "Latvia" & 
+    programme_acronym == "LIFE project (LIFE05 NAT/LV/000100)"
+      ~ "LVA-LIFE05",
+
+  # Lithuania
+  country_clean == "Lithuania" ~ "LTU",
+
+  
+  # Estionia
+  country_clean == "Estonia" & organization_acronym == "BirdLife Estonia (EOS)" ~ "EST-EOS",
+  country_clean == "Estonia" & organization_acronym == "Estonian University of Life Sciences (EMU)"  ~"EST-EMU",  
+
+  # Russian Federation
+  country_clean == "Russian Federation" ~ "RUS",
+
+  # Poland
+  country_clean == "Poland" & 
+   organization_acronym == "Chief Inspector of Environmental Protection (GIOS)" 
+    ~ "POL-MZPM",
+
+  # Sweden
+  country_clean == "Sweden" ~ "SWE", 
+      
+  # Danmark
+  country_clean == "Denmark" ~ "DNK",
+
+  # Germany
+  country_clean == "Germany" & 
+    organization_acronym == "Federal Maritime and Hydrographic Agency (BSH)" 
+      ~ "DEU-BSH",
+  country_clean == "Germany" & 
+    programme_acronym == "German Marine Biodiversity Monitoring" 
+      ~ "DEU-GMBM",
+  country_clean == "Germany" & 
+    programme_acronym == "German Seabirds at Sea programme (SAS)" 
+      ~ "DEU-SAS",
+  country_clean == "Germany" & 
+    programme_acronym == "Offshore Seabird Monitoring in the Schleswig-Holstein coastal sea, North Sea" 
+      ~ "DEU-OSMS",
+
+ 
+  # Norway
+  country_clean == "Norway" & 
+   organization_acronym == "Norwegian Institute for Nature Research (NINA)" 
+    ~ "NOR-NINA",
+
+  
+  # Netherlands
+  country_clean == "Netherlands" & 
+   organization_acronym == "Bureau Waardenburg (BuWa)" & 
+   name_and_acronym == "None" &
+   platform == "Aerial" 
+    ~ "NLD-BuWa-AIR",
+  country_clean == "Netherlands" & 
+   organization_acronym == "Bureau Waardenburg (BuWa)" & 
+  name_and_acronym == "None" &
+   platform == "Ship-based" 
+    ~ "NLD-BuWa-SHIP",
+  country_clean == "Netherlands" & 
+   organization_acronym == "Royal Netherlands Institute for Sea Research (NIOZ)" 
+    ~ "NLD-NIOZ", 
+   country_clean == "Netherlands" & 
+    organization_acronym == "Bureau Waardenburg (BuWa)" & 
+    programme_acronym == "Monitoring van de Waterstaatkundige Toestand des Lands (MWTL), zeevogels"
+    ~ "NLD-MWTL",
+  country_clean == "Netherlands" & 
+   organization_acronym == "Wageningen Marine Research (WUR)" 
+    ~ "NLD-WUR",  
+
+  # Belgium
+  country_clean == "Belgium" & organization_acronym == "Research Institute for Nature and Forest (INBO)" ~ "BEL-INBO",
+  country_clean == "Belgium" & organization_acronym == "Royal Belgian Institute for Natural Sciences (RBINS)" ~ "BEL-RBINS",  
+
+  # United Kingdom
+  country_clean == "United Kingdom" & 
+   programme_acronym == "Seagreen Firth of Forth zone"
+    ~ "GBR-SFF",
+ country_clean == "United Kingdom" & 
+   programme_acronym == "Sheringham Shoal Offshore Wind Farm (OWF)"
+    ~ "GBR-OWF",
+  country_clean == "United Kingdom" & 
+   organization_acronym == "HiDef Aerial Surveying Limited (HiDef)" 
+    ~ "GBR-HIDEF",
+  country_clean == "United Kingdom" & 
+   organization_acronym == "Joint Nature Conservation Committe (JNCC)" 
+    ~ "GBR-JNCC",
+
+  # Ireland
+  country_clean == "Ireland" & 
+    organization_acronym == "Marine Institute" ~ "IRL-MI",
+  country_clean == "Ireland" & 
+    organization_acronym == "National Parks and Wildlife Service (NPWS)" ~ "IRL-NPWS",
+  
+  # France
+  country_clean == "France" ~ "FRA",
+
+  # Spain
+  country_clean == "Spain" & 
+   programme_acronym == "BIOMAN" 
+    ~ "ESP-BIO",
+  country_clean == "Spain" & 
+   programme_acronym == "JUVENA" 
+    ~ "ESP-JUV",
+  country_clean == "Spain" & 
+    programme_acronym == "PELACUS" 
+    ~ "ESP-PEL",
+   country_clean == "Spain" & 
+    programme_acronym == "IEO-AV3" 
+    ~ "ESP-AV3",
+  country_clean == "Spain" & 
+   organization_acronym == "University of Cadiz (UCA)" 
+    ~ "ESP-UCA", 
+  
+   # Portugal
+  country_clean == "Portugal" ~ "PRT",
+ 
+  # Greece
+  country_clean == "Greece" & 
+    programme_acronym == "LIFE project (LIFE96 NAT/GR/003221)"
+      ~ "GRC-LIFE96",
+  
+   country_clean == "Greece" & 
+    programme_acronym == "LIFE project (LIFE03 NAT/GR/000091)" 
+      ~ "GRC-LIFE03",
+  
+  country_clean == "Greece" & 
+    programme_acronym == "LIFE project (LIFE07 NAT/GR/000285)" 
+      ~ "GRC-LIFE07",
+  
+  country_clean == "Greece" & 
+    programme_acronym == "Hellenic Seabird Project" 
+      ~ "GRC-HSP",
+  
+  country_clean == "Greece" & 
+   programme_acronym == "EU Marine Strategy Framework Directive for Greece" 
+      ~ "GRC-MSFD",
+
+  # Malta
+ country_clean == "Malta" ~ "MLT"
+  ))
+```
+
+Inspect dataset shortnames per country:
+
+```{r inspect dataset shortname}
+input_data %>% 
+  select(country_clean, organization_acronym, programme_acronym, programme_id) %>% 
+  group_by_all() %>% 
+  summarize(records = n()) 
+```
+
+# Export processed dataset
+
+Resturecure and select columns relevant for further discussion (to reduce size of the dataset)
+
+```{r}
+input_data %<>% 
+  select(
+    programme_id,
+    country_clean,
+    organization_acronym,
+    programme_acronym,
+    role,
+    short_description,
+    programm_lead,
+    active_yn,
+    start_year,
+    end_year,
+    nr_occurrences,
+    taxonomic_scope,
+    geographical_scope,
+    time_of_year,
+    sampling_interval,
+    platform,
+    data_storage,
+    data_import,
+    esas_db_yn,
+    remarks,
+    other_sas_data,
+    sharing_interest_yn,
+    financial_constraints_yn,
+    legal_constraints_yn,
+    expected_costs,
+    sharing_conditions,
+    information_about,
+    other_relevant_remarks,
+    ship_based_line_transect,
+    ship_based_flying_birds,
+    ship_based_distance,
+    aerial_digital_survey,
+    aerial_observer_based,
+    aerial_line_transect,
+    aerial_strip_transect,
+    distance_estimation,
+    ship_based_strip_transect
+  )
+```
+
+Export cleaned dataset: 
+
+```{r}
+write.csv(input_data, here::here("data", "processed", "cleaned_data.csv"), row.names = FALSE)
+```
