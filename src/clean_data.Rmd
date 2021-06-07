@@ -506,5 +506,5 @@ input_data %<>%
 Export cleaned dataset: 
 
 ```{r}
-write.csv(input_data, here::here("data", "processed", "processed_data.csv"), row.names = FALSE)
+write.csv(input_data, here::here("data", "processed", "cleaned_data.csv"), row.names = FALSE)
 ```

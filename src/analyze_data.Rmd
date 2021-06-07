@@ -17,19 +17,22 @@ library(tidyverse)
 library(magrittr)
 library(here)
 library(knitr)
-library(formattable)
 library(sf)
 library(leaflet)
 library(htmltools)
 library(htmlwidgets)
 library(webshot)
 library(kableExtra)
+
+
+# library(formattable)
+
 ```
 
 # Import data
 
 ```{r import data}
-input_data <- read.delim(file = here::here("data", "intermediate", "input_data_cleaned.csv"), sep = ",")
+input_data <- read.delim(file = here::here("data", "processed", "cleaned_data.csv"), sep = ",")
 ```
 
 Define level order for sorting in tables:
@@ -59,13 +62,10 @@ input_data %<>%
            "MLT")))
 ```
 
-Import spatial information data for map:
 
-```{r import geojson}
-global_countries_spatial <- st_read(here::here("./data/input/CNTR_RG_60M_2020_4326.geojson"))
-```
+# General findings
 
-# Paragraph 1: General programme information
+## Statistics for text
 
 Total number of organizations holding SAS data:
 
@@ -75,22 +75,19 @@ input_data %>%
   summarize(records = n())
 ```
 
-## Statistics for text
-
 Total number of programmes:
 
 ```{r}
 input_data %>% nrow()
 ```
 
-Total number of organizations:
-
-```{r}
-input_data %>% distinct(organization_acronym) %>% count()
-```
-
 ## Figure 1: Number of datasets per country
 
+Import spatial information data for map:
+
+```{r import geojson}
+global_countries_spatial <- st_read(here::here("./data/input/CNTR_RG_60M_2020_4326.geojson"))
+```
 Generate `datasets_per_country`
 
 ```{r}
@@ -189,19 +186,47 @@ Export as .tsv
 write_tsv(table_1, path = here::here("data", "processed", "table_1.tsv"))
 ```
 
-# Paragraph 2: Data content
 
-This table should include:
+# Data compatibility for inclusion in ESAS
 
-- Programme active (y/n)
-- Nr of occurrences 
+This paragraph includes information on:
+
+- Temporal scope
+- Number of occurrences 
 - Geographical coverage
-- Taxonomic Coverage
-- Platform
+- Taxonomic coverage
+- Platform of observations
+- Data format
 
-## Clean data
+To generate statistics and tables, we first clean some of these variables.
 
-### Number of occurrences
+## Temporal scope
+
+Inspect `start_year` and `end_year`
+
+```{r}
+input_data %>% 
+  select(start_year, end_year) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+When the programme is still active, we use `now` as end year.
+
+```{r}
+input_data %<>% mutate(temporal_scope = case_when(
+  active_yn == "Yes" ~ paste(start_year, "now",sep = "-"),
+  active_yn == "No" ~ paste(start_year, end_year, sep ="-")))
+```
+
+
+```{r}
+input_data %>% 
+  select(start_year, end_year, temporal_scope) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+
+## Number of occurrences
 
 ```{r}
 input_data %>% 
@@ -231,7 +256,7 @@ input_data %>%
   summarize(records = n())
 ```
 
-### Geographical scope
+## Geographical scope
 
 Inspect values
 
@@ -239,11 +264,15 @@ Inspect values
 input_data %>% 
   select(geographical_scope) %>% 
   group_by_all() %>% 
-  summarize(records = n()) %>% 
-  kbl()
+  summarize(records = n()) 
 ```
 
-Make new columns `OSPAR`, `HELCOM` and `Other`:
+We will make the distinction between programmes coming from
+- OSPAR regions
+- HELCOM regions
+- Other
+
+- Make column `OSPAR` (value I - V):
 
 ```{r}
 input_data %<>% 
@@ -268,7 +297,7 @@ input_data %<>%
     ))
 ```
 
-Helcom areas:
+- Helcom areas (value yes/no):
 
 ```{r}
 input_data %<>% 
@@ -299,11 +328,10 @@ Inspect new values:
 input_data %>% 
   select(geographical_scope, ospar, baltic_sea) %>% 
   group_by_all() %>% 
-  summarize(records = n()) %>% 
-  kbl()
+  summarize(records = n()) 
 ```
 
-### Taxonomic Coverage
+## Taxonomic Coverage
 
 Inspect values:
 
@@ -314,7 +342,12 @@ input_data %>%
   summarize(records = n())
 ```
 
-Separate into `birds_yn`, `marine_mammals_yn`, `other`:
+We here make the distinction between 
+- presence of birds (y/n
+- presence of marine mammals (y/n)
+- presence of other species groups
+
+Generate: `birds_yn`, `marine_mammals_yn`, `other`:
 
 ```{r}
 input_data %<>%
@@ -352,40 +385,13 @@ input_data %>%
   group_by_all() %>% 
   summarize(records = n())
 ```
-
-### Temporal scope
-
-Inspect `start_year` and `end_year`
-
-```{r}
-input_data %>% 
-  select(start_year, end_year) %>% 
-  group_by_all() %>% 
-  summarize(n = n())
-```
-
-```{r}
-input_data %<>% mutate(temporal_scope = case_when(
-  active_yn == "Yes" ~ paste(start_year, "now",sep = "-"),
-  active_yn == "No" ~ paste(start_year, end_year, sep ="-")))
-```
-
-
-```{r}
-input_data %>% 
-  select(start_year, end_year, temporal_scope) %>% 
-  group_by_all() %>% 
-  summarize(n = n())
-```
-
-### Platform
+## Platform
 
 ```{r}
 input_data %>% 
   select(platform) %>% group_by_all() %>% summarize(n = n())
 ```
-
-Generate two columns: `ship-based` and `aerial`
+We make the distinction between ship-based and aerial platforms:
 
 ```{r}
 input_data <- 
@@ -400,28 +406,35 @@ input_data <-
        TRUE ~ ""))
 ```
 
-## Statistics for text
+## Data storage
 
+```{r}
+input_data %>% 
+  select(data_storage) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+``` 
 Some cleaning steps:
 
 - Change `Relational database (Postgres, MySQL, etc.)` to `Relational database` as we will separate on `,` later:
-**REMARK: code could be simplified, to do later**
 
 ```{r}
 input_data <-
   input_data %>% mutate(data_storage = recode(data_storage,
     "Relational database (Postgres, MySQL, etc.)" = "Relational database",
     "Relational database (Postgres, MySQL, etc.), CSV files" = "Relational database, CSV files",
-    "Relational database (Postgres, MySQL, etc.), Microsoft Excel" = "Relational database, Microsoft Excel"))
+    "Relational database (Postgres, MySQL, etc.), Microsoft Excel" = "Relational database, Microsoft Excel",
+    "Relational database (Postgres, MySQL, etc.), Paradox" = "Relational database, Paradox"))
 ```
 
-- Seperate `data_storage` into different units:
+- Separate `data_storage` into different units:
 
 ```{r}
 data_storage <- 
   input_data %>% separate(col = data_storage, 
                             into = c("storage_1", "storage_2"),
-                            sep = ",")
+                            sep = ",",
+                            remove = FALSE)
 ```
 
 - From wide to long dataset:
@@ -429,37 +442,112 @@ data_storage <-
 ```{r}
 data_storage <-
   data_storage %>% 
-  gather(key = key, value = value, storage_1: storage_2, na.rm = TRUE, factor_key = TRUE) %>% 
-  select(key, value) %>% 
-  mutate(value = str_trim(value, side = "left")) %>%    # trim whitespace
-  mutate(value = recode(value, 
-    "But since 2015 we are collecting data using electronic devices. A Cybertracker based App was built. Data is needed to be imported to Paradox though." = "Paradox"))  %>% # Recode long sentence to `Paradox` 
-  mutate(value = factor(value, levels = c("CSV files", "Microsoft Excel", "Microsoft Access", "Paradox", "Relational database")))
+    gather(key = key, 
+           value = value, 
+           storage_1: storage_2, 
+           na.rm = TRUE, 
+           factor_key = TRUE) %>% 
+  select(data_storage, key, value)
 ```
 
-- Recode `But since 2015 we are collecting data using electronic devices. A Cybertracker based App was built. Data is needed to be imported to Paradox though.`:
+Show `value`:
 
-- Count records:
+```{r}
+data_storage %>% 
+  select(value) %>% 
+  group_by_all() %>% 
+  summarize(n = n())
+```
+Clean `value`:
 
 ```{r}
 data_storage <-
   data_storage %>% 
-    select(value) %>% 
-    group_by(value) %>% 
-    summarize(records = n())
-data_storage
+   mutate(value = str_trim(value, side = "left")) %>%    # trim whitespace
+   mutate(value = recode(value, 
+    "But since 2015 we are collecting data using electronic devices. A Cybertracker based App was built. Data is needed to be imported to Paradox though." = "Paradox"))  %>% 
+    mutate(value = recode(value, "position information is stored as shapefiles" = "shapefiles"))
 ```
+
+- Count records:
+
+```{r}
+data_storage %>% 
+  select(value) %>% 
+  group_by_all %>% 
+  summarize(records = n(),
+            percentage = n()/44*100)
+```
+## Dataset content quality
+
+Dataset content quality was assessed using two criteria: (1) current inclusion in the ESAS database and (2) sampling methodology. 
+
+- Number of programmes already or partially included in the ESAS database:
+
+```{r}
+input_data %>% 
+  filter(esas_db_yn == "Yes" | esas_db_yn == "Partially") %>% count()
+```
+
+- Sampling methodology: ship-based observations generated by distance observation methodes combined with snapshot counts for flying birds
+
+```{r}
+low_quality_ship <- 
+  bind_rows(
+
+    # No distance method nor snapshot counts   
+    tibble(
+        input_data %>% 
+          filter(platform == "Ship-based" | platform == "Ship-based, Aerial") %>% 
+          filter(ship_based_distance == "No" | is.na(ship_based_distance)) %>% 
+          filter(ship_based_flying_birds == "No" | is.na(ship_based_flying_birds))),
+    
+    # distance method but no snapshot counts
+    tibble(
+      input_data %>% 
+        filter(platform == "Ship-based" | platform == "Ship-based, Aerial") %>% 
+        filter(ship_based_distance == "Yes") %>% 
+        filter(ship_based_flying_birds == "No" | is.na(ship_based_flying_birds))),
+    # distance method but no snapshot counts
+
+    tibble(
+      input_data %>% 
+        filter(platform == "Ship-based" | platform == "Ship-based, Aerial") %>% 
+        filter(ship_based_distance == "No" | is.na(ship_based_distance)) %>%
+        filter(ship_based_flying_birds == "Yes"))
+  )  
+low_quality_ship
+```
+
+Do one or more of these programmes combine low quality ship data with high quality aerial data?
+
+```{r}
+low_quality_ship %>% 
+  filter(platform == "Ship-based, Aerial" | distance_estimation == "Yes") 
+```
+```{r}
+input_data %>% 
+  filter(platform == "Ship-based" | platform == "Ship-based, Aireal") %>% 
+  filter(ship_based_distance == "No" & ship_based_flying_birds == "Yes")
+```
+
+```{r}
+input_data %>% 
+  filter(platform == "Aerial") %>% 
+  filter(distance_estimation == "No" | is.na(distance_estimation))
+```
+
 
 ## Table 2: Data content
 
-This table should include:
+This table includes:
 
 - Programme ID
-- Programme activity
+- Temporal scope
 - Nr of occurrences 
-- Geographical coverage
-- Taxonomic Coverage
-- Platform
+- Geographical coverage (OSPAR region, Baltic SEA)
+- Taxonomic Coverage (inclusion of marine mammals)
+- Platform (plane or ship)
 
 ```{r}
 table_2 <-
@@ -476,20 +564,37 @@ input_data %>%
     `Plane` = aerial,
     `Ship` = ship_based) %>% 
   arrange(`Programme ID`)
-kbl(table_2)
+table_2
 ```
 
 ```{r}
 write_tsv(table_2, path = here::here("data", "processed", "table_2.tsv"))
 ```
 
-# Paragraph 3: Constraints for sharing data
+# Constraints for sharing data
 
-## Clean data
+This paragraph includes information on:
 
-### Sharing interest
+- Integration in the ESAS database
+- Interest to share data
+- Legal constraints for sharing data
+- Financial constraints for sharing data
 
-Screent content of `sharing_interest_yn`:
+## Integration in ESAS database
+
+Integration in ESAS database? Summarize `esas_db_yn`:
+
+```{r}
+input_data %>% 
+  select(esas_db_yn) %>% 
+  group_by_all() %>% 
+  summarize(records = n(),
+            percentage = round(n()/nrow(input_data)*100))
+```
+
+## Sharing interest
+
+Screen content of `sharing_interest_yn`:
 
 ```{r}
 input_data %>%
@@ -499,11 +604,9 @@ input_data %>%
             `?` = n()/nrow(input_data)*100)
 ```
 
-No cleaning required
+## Financial constraints
 
-### Financial constraints
-
-Screent content of `financial_constraints_yn`:
+Screen content of `financial_constraints_yn`:
 
 ```{r}
 input_data %>%
@@ -522,28 +625,6 @@ input_data %>%
   summarize(records = n(),
             `?` = n()/nrow(input_data)*100)
 ```
-
-2## Statistics for text 
-
-Integration in ESAs database? Summarize `esas_db_yn`:
-
-```{r}
-input_data %>% 
-  select(esas_db_yn) %>% 
-  group_by_all() %>% 
-  summarize(records = n(),
-            percentage = round(n()/nrow(input_data)*100))
-```
-
-Summary per country:
-
-```{r}
-input_data %>% 
-  select(country_clean, esas_db_yn) %>% 
-  group_by_all() %>% 
-  summarize(records = n())
-```
-
 
 ## Table 3
 
